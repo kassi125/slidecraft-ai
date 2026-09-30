@@ -123,15 +123,8 @@
                 throw new Error(errData.error || "Erreur lors de la communication avec le serveur");
             }
 
-            const data = await response.json();
-            
-            try {
-                // Notre backend renvoie directement la réponse texte de Gemini
-                const responseText = data.candidates[0].content.parts[0].text;
-                return JSON.parse(responseText);
-            } catch (e) {
-                throw new Error("L'IA n'a pas renvoyé un format valide.");
-            }
+            // Le serveur Node.js (via le SDK Google) nous renvoie directement les slides en JSON !
+            return await response.json();
         }
 
         async function createPPTX(slidesData, originalFileName) {

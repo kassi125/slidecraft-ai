@@ -9,6 +9,8 @@ app.use(express.json({ limit: '50mb' }));
 // Servir les fichiers statiques (index.html) depuis le dossier racine
 app.use(express.static(__dirname));
 
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
 // Route API pour faire la requête cachée vers Gemini
 app.post('/api/generate', async (req, res) => {
     try {
@@ -22,7 +24,14 @@ app.post('/api/generate', async (req, res) => {
             return res.status(400).json({ error: "Aucun texte fourni." });
         }
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+        // Le SDK officiel gère automatiquement la bonne version de l'API (v1, v1beta) et le bon routage !
+        const genAI = new GoogleGenerativeAI(apiKey);
+        // On permet de surcharger le modèle via l'environnement, sinon on utilise gemini-1.5-flash
+        const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+        const model = genAI.getGenerativeModel({
+            model: modelName,
+            generationConfig: { responseMimeType: "application/json" }
+        });
 
         const prompt = `
         Tu es un expert en création de présentations professionnelles. 
@@ -44,24 +53,15 @@ app.post('/api/generate', async (req, res) => {
         ${text}
         `;
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { response_mime_type: "application/json" }
-            })
-        });
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
+        
+        // On convertit directement en objet JSON côté serveur
+        const jsonResult = JSON.parse(responseText);
+        res.json(jsonResult);
 
-        if (!response.ok) {
-            const errData = await response.json();
-            return res.status(response.status).json({ error: errData.error?.message || "Erreur Gemini API" });
-        }
-
-        const data = await response.json();
-        res.json(data);
     } catch (error) {
-        console.error("Erreur serveur:", error);
+        console.error("Erreur serveur Gemini:", error);
         res.status(500).json({ error: error.message });
     }
 });
