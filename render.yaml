@@ -1,7 +1,9 @@
 services:
   - type: web
     name: slidecraft-ai
-    env: static
-    buildCommand: '' # Aucun build nécessaire pour du HTML simple
-    staticPublishPath: ./ # Le dossier contenant index.html
-    autoDeploy: true
+    env: node
+    buildCommand: 'npm install'
+    startCommand: 'node server.js'
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false

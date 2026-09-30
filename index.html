@@ -26,19 +26,12 @@
 
     <div class="max-w-3xl mx-auto p-8 mt-10 bg-white rounded-xl shadow-lg border border-gray-100">
         <h1 class="text-3xl font-bold text-center text-blue-600 mb-2">✨ SlideCraft AI</h1>
-        <p class="text-center text-gray-500 mb-8">Transformez vos documents PDF/Word en PowerPoint en 1 clic directement dans votre navigateur, sans rien installer !</p>
-
-        <!-- Configuration API -->
-        <div class="bg-blue-50 p-5 rounded-lg mb-6 border border-blue-100">
-            <h2 class="font-semibold text-blue-800 mb-2">1. Clé API Google Gemini</h2>
-            <p class="text-sm text-gray-600 mb-3">Obtenez une clé gratuite sur <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-500 underline">Google AI Studio</a>. Vos données restent dans votre navigateur.</p>
-            <input type="password" id="apiKey" placeholder="Collez votre clé API ici..." class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400">
-        </div>
+        <p class="text-center text-gray-500 mb-8">Transformez vos documents PDF/Word en PowerPoint en 1 clic !</p>
 
         <!-- Fichier -->
-        <div class="mb-6">
-            <h2 class="font-semibold text-gray-800 mb-2">2. Document (PDF ou Word)</h2>
-            <input type="file" id="fileInput" accept=".pdf,.docx" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+        <div class="mb-6 bg-blue-50 p-5 rounded-lg border border-blue-100">
+            <h2 class="font-semibold text-gray-800 mb-2">📄 Document (PDF ou Word)</h2>
+            <input type="file" id="fileInput" accept=".pdf,.docx" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700">
         </div>
 
         <!-- Bouton -->
@@ -53,25 +46,12 @@
     </div>
 
     <script>
-        // Charger la clé API sauvegardée
-        document.addEventListener('DOMContentLoaded', () => {
-            const savedKey = localStorage.getItem('gemini_api_key');
-            if (savedKey) document.getElementById('apiKey').value = savedKey;
-        });
-
         async function processDocument() {
-            const apiKey = document.getElementById('apiKey').value.trim();
-            if (apiKey) localStorage.setItem('gemini_api_key', apiKey);
-            
             const fileInput = document.getElementById('fileInput');
             const statusArea = document.getElementById('statusArea');
             const statusText = document.getElementById('statusText');
             const btn = document.getElementById('generateBtn');
 
-            if (!apiKey) {
-                alert("Veuillez entrer une clé API Gemini.");
-                return;
-            }
             if (fileInput.files.length === 0) {
                 alert("Veuillez sélectionner un fichier PDF ou DOCX.");
                 return;
@@ -86,11 +66,10 @@
                 // 1. Extraction du texte
                 updateStatus("📄 Extraction du texte en cours...");
                 const text = await extractTextFromFile(file);
-                console.log("Texte extrait:", text.substring(0, 500) + "...");
 
-                // 2. Appel à l'API IA
+                // 2. Appel à notre serveur (qui contactera l'IA secrètement)
                 updateStatus("🧠 L'IA analyse le texte et crée les diapositives (cela peut prendre 10 à 20s)...");
-                const slidesData = await generateSlidesWithAI(apiKey, text);
+                const slidesData = await generateSlidesWithAI(text);
 
                 // 3. Création du PPTX
                 updateStatus("📊 Création du fichier PowerPoint...");
@@ -132,51 +111,26 @@
             }
         }
 
-        async function generateSlidesWithAI(apiKey, text) {
-            // Limiter la taille du texte par sécurité si très long, mais Gemini 1.5 flash gère 1M tokens.
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
-            
-            const prompt = `
-            Tu es un expert en création de présentations professionnelles. 
-            Lis le texte fourni et extrais les informations les plus importantes pour créer une présentation PowerPoint claire et concise.
-            Conserve la langue originale du document.
-            
-            Le résultat doit être STRICTEMENT un objet JSON avec la structure suivante, sans aucun autre texte autour, sans bloc markdown de code :
-            {
-                "presentation_title": "Titre principal",
-                "slides": [
-                    {
-                        "title": "Titre de la diapositive",
-                        "bullet_points": ["Point clé 1", "Point clé 2"]
-                    }
-                ]
-            }
-            
-            Texte à résumer :
-            ${text}
-            `;
-
-            const response = await fetch(url, {
+        async function generateSlidesWithAI(text) {
+            const response = await fetch('/api/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { response_mime_type: "application/json" }
-                })
+                body: JSON.stringify({ text: text })
             });
 
             if (!response.ok) {
                 const errData = await response.json();
-                throw new Error(errData.error?.message || "Erreur lors de la communication avec l'API Gemini");
+                throw new Error(errData.error || "Erreur lors de la communication avec le serveur");
             }
 
             const data = await response.json();
-            const responseText = data.candidates[0].content.parts[0].text;
             
             try {
+                // Notre backend renvoie directement la réponse texte de Gemini
+                const responseText = data.candidates[0].content.parts[0].text;
                 return JSON.parse(responseText);
             } catch (e) {
-                throw new Error("L'IA n'a pas renvoyé un format valide. Veuillez réessayer.");
+                throw new Error("L'IA n'a pas renvoyé un format valide.");
             }
         }
 
@@ -199,13 +153,11 @@
                 slidesData.slides.forEach(slideInfo => {
                     let slide = pptx.addSlide();
                     
-                    // Titre du slide
                     slide.addText(slideInfo.title || "Diapositive", {
                         x: 0.5, y: 0.5, w: 9, h: 1,
                         fontSize: 32, bold: true, color: "003366"
                     });
                     
-                    // Puces (bullet points)
                     if (slideInfo.bullet_points && Array.isArray(slideInfo.bullet_points)) {
                         let bulletItems = slideInfo.bullet_points.map(point => ({
                             text: point,
