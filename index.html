@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SlideCraft AI - Générateur de Présentations</title>
+    
+    <!-- Tailwind CSS pour le style -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- PDF.js pour lire les PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    
+    <!-- Mammoth.js pour lire les DOCX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
+    
+    <!-- PptxGenJS pour créer le PowerPoint -->
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS/dists/pptxgen.bundle.js"></script>
+
+    <script>
+        // Configuration du worker PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
+
+    <div class="max-w-3xl mx-auto p-8 mt-10 bg-white rounded-xl shadow-lg border border-gray-100">
+        <h1 class="text-3xl font-bold text-center text-blue-600 mb-2">✨ SlideCraft AI</h1>
+        <p class="text-center text-gray-500 mb-8">Transformez vos documents PDF/Word en PowerPoint en 1 clic directement dans votre navigateur, sans rien installer !</p>
+
+        <!-- Configuration API -->
+        <div class="bg-blue-50 p-5 rounded-lg mb-6 border border-blue-100">
+            <h2 class="font-semibold text-blue-800 mb-2">1. Clé API Google Gemini</h2>
+            <p class="text-sm text-gray-600 mb-3">Obtenez une clé gratuite sur <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-500 underline">Google AI Studio</a>. Vos données restent dans votre navigateur.</p>
+            <input type="password" id="apiKey" placeholder="Collez votre clé API ici..." class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+
+        <!-- Fichier -->
+        <div class="mb-6">
+            <h2 class="font-semibold text-gray-800 mb-2">2. Document (PDF ou Word)</h2>
+            <input type="file" id="fileInput" accept=".pdf,.docx" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+        </div>
+
+        <!-- Bouton -->
+        <button id="generateBtn" onclick="processDocument()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-md">
+            🚀 Générer la présentation
+        </button>
+
+        <!-- Statut -->
+        <div id="statusArea" class="mt-6 hidden">
+            <div id="statusText" class="text-center font-medium text-gray-600 bg-gray-100 p-3 rounded"></div>
+        </div>
+    </div>
+
+    <script>
+        async function processDocument() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const fileInput = document.getElementById('fileInput');
+            const statusArea = document.getElementById('statusArea');
+            const statusText = document.getElementById('statusText');
+            const btn = document.getElementById('generateBtn');
+
+            if (!apiKey) {
+                alert("Veuillez entrer une clé API Gemini.");
+                return;
+            }
+            if (fileInput.files.length === 0) {
+                alert("Veuillez sélectionner un fichier PDF ou DOCX.");
+                return;
+            }
+
+            const file = fileInput.files[0];
+            statusArea.classList.remove('hidden');
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            try {
+                // 1. Extraction du texte
+                updateStatus("📄 Extraction du texte en cours...");
+                const text = await extractTextFromFile(file);
+                console.log("Texte extrait:", text.substring(0, 500) + "...");
+
+                // 2. Appel à l'API IA
+                updateStatus("🧠 L'IA analyse le texte et crée les diapositives (cela peut prendre 10 à 20s)...");
+                const slidesData = await generateSlidesWithAI(apiKey, text);
+
+                // 3. Création du PPTX
+                updateStatus("📊 Création du fichier PowerPoint...");
+                await createPPTX(slidesData, file.name);
+
+                updateStatus("✅ Terminé ! Le téléchargement a démarré.");
+            } catch (error) {
+                console.error(error);
+                statusText.innerHTML = `<span class="text-red-600">❌ Erreur : ${error.message}</span>`;
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        function updateStatus(message) {
+            document.getElementById('statusText').innerText = message;
+        }
+
+        async function extractTextFromFile(file) {
+            const ext = file.name.split('.').pop().toLowerCase();
+            const arrayBuffer = await file.arrayBuffer();
+
+            if (ext === 'docx') {
+                const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                return result.value;
+            } else if (ext === 'pdf') {
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                let fullText = "";
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(" ");
+                    fullText += pageText + "\n";
+                }
+                return fullText;
+            } else {
+                throw new Error("Format non supporté. Utilisez PDF ou DOCX.");
+            }
+        }
+
+        async function generateSlidesWithAI(apiKey, text) {
+            // Limiter la taille du texte par sécurité si très long, mais Gemini 1.5 flash gère 1M tokens.
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            
+            const prompt = `
+            Tu es un expert en création de présentations professionnelles. 
+            Lis le texte fourni et extrais les informations les plus importantes pour créer une présentation PowerPoint claire et concise.
+            Conserve la langue originale du document.
+            
+            Le résultat doit être STRICTEMENT un objet JSON avec la structure suivante, sans aucun autre texte autour, sans bloc markdown de code :
+            {
+                "presentation_title": "Titre principal",
+                "slides": [
+                    {
+                        "title": "Titre de la diapositive",
+                        "bullet_points": ["Point clé 1", "Point clé 2"]
+                    }
+                ]
+            }
+            
+            Texte à résumer :
+            ${text}
+            `;
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { response_mime_type: "application/json" }
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error?.message || "Erreur lors de la communication avec l'API Gemini");
+            }
+
+            const data = await response.json();
+            const responseText = data.candidates[0].content.parts[0].text;
+            
+            try {
+                return JSON.parse(responseText);
+            } catch (e) {
+                throw new Error("L'IA n'a pas renvoyé un format valide. Veuillez réessayer.");
+            }
+        }
+
+        async function createPPTX(slidesData, originalFileName) {
+            let pptx = new PptxGenJS();
+            
+            // Slide Titre
+            let slideTitle = pptx.addSlide();
+            slideTitle.addText(slidesData.presentation_title || "Présentation", {
+                x: 1, y: 2, w: 8, h: 1.5,
+                fontSize: 44, bold: true, color: "363636", align: "center"
+            });
+            slideTitle.addText("Généré par IA", {
+                x: 1, y: 3.5, w: 8, h: 1,
+                fontSize: 24, color: "888888", align: "center"
+            });
+
+            // Slides de contenu
+            if (slidesData.slides && Array.isArray(slidesData.slides)) {
+                slidesData.slides.forEach(slideInfo => {
+                    let slide = pptx.addSlide();
+                    
+                    // Titre du slide
+                    slide.addText(slideInfo.title || "Diapositive", {
+                        x: 0.5, y: 0.5, w: 9, h: 1,
+                        fontSize: 32, bold: true, color: "003366"
+                    });
+                    
+                    // Puces (bullet points)
+                    if (slideInfo.bullet_points && Array.isArray(slideInfo.bullet_points)) {
+                        let bulletItems = slideInfo.bullet_points.map(point => ({
+                            text: point,
+                            options: { bullet: true, fontSize: 18, color: "333333", breakLine: true }
+                        }));
+                        
+                        slide.addText(bulletItems, {
+                            x: 0.5, y: 1.8, w: 9, h: 3.5,
+                            valign: "top"
+                        });
+                    }
+                });
+            }
+
+            const outName = "Presentation_" + originalFileName.split('.')[0] + ".pptx";
+            await pptx.writeFile({ fileName: outName });
+        }
+    </script>
+</body>
+</html>
