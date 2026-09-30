@@ -36,13 +36,16 @@ app.post('/api/generate', async (req, res) => {
         if (!text) {
             return res.status(400).json({ error: "Aucun texte fourni." });
         }
+        
+        const theme = req.body.theme || "";
+        const themeInstruction = theme ? `\nIMPORTANT - THÈME DEMANDÉ : Le créateur souhaite ce thème ou style particulier : "${theme}". Adapte le ton, le style et le choix des informations en fonction de cette demande.\n` : "";
 
         // Le SDK officiel gère automatiquement la bonne version de l'API (v1, v1beta) et le bon routage !
         const genAI = new GoogleGenerativeAI(apiKey);
         const prompt = `
         Tu es un expert en création de présentations professionnelles. 
         Lis le texte fourni et extrais les informations les plus importantes pour créer une présentation PowerPoint claire et concise.
-        Conserve la langue originale du document.
+        Conserve la langue originale du document.${themeInstruction}
         
         Le résultat doit être STRICTEMENT un objet JSON avec la structure suivante, sans aucun autre texte autour, sans bloc markdown de code :
         {
