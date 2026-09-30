@@ -11,6 +11,19 @@ app.use(express.static(__dirname));
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
+// Route diagnostic pour voir les modèles disponibles avec cette clé API
+app.get('/api/models', async (req, res) => {
+    try {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) return res.status(500).json({ error: "No API key configured" });
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+        const data = await response.json();
+        res.json(data);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Route API pour faire la requête cachée vers Gemini
 app.post('/api/generate', async (req, res) => {
     try {
@@ -26,8 +39,8 @@ app.post('/api/generate', async (req, res) => {
 
         // Le SDK officiel gère automatiquement la bonne version de l'API (v1, v1beta) et le bon routage !
         const genAI = new GoogleGenerativeAI(apiKey);
-        // Utilisation de "gemini-pro" (la version universellement disponible) pour éviter toute erreur 404
-        const modelName = process.env.GEMINI_MODEL || "gemini-pro";
+        // Utilisation de "gemini-pro" par défaut, avec nettoyage des espaces au cas où
+        const modelName = (process.env.GEMINI_MODEL || "gemini-pro").trim();
         const model = genAI.getGenerativeModel({
             model: modelName
         });
