@@ -39,12 +39,6 @@ app.post('/api/generate', async (req, res) => {
 
         // Le SDK officiel gère automatiquement la bonne version de l'API (v1, v1beta) et le bon routage !
         const genAI = new GoogleGenerativeAI(apiKey);
-        // Utilisation de "gemini-flash-latest" d'après la liste des modèles disponibles sur ce compte
-        const modelName = (process.env.GEMINI_MODEL || "gemini-flash-latest").trim();
-        const model = genAI.getGenerativeModel({
-            model: modelName
-        });
-
         const prompt = `
         Tu es un expert en création de présentations professionnelles. 
         Lis le texte fourni et extrais les informations les plus importantes pour créer une présentation PowerPoint claire et concise.
@@ -65,8 +59,29 @@ app.post('/api/generate', async (req, res) => {
         ${text}
         `;
 
-        const result = await model.generateContent(prompt);
-        let responseText = result.response.text();
+        const preferredModel = (process.env.GEMINI_MODEL || "gemini-flash-latest").trim();
+        // Liste de secours en cas d'erreur 503 (surcharge des serveurs Google)
+        const fallbackModels = [preferredModel, "gemini-3.5-flash", "gemini-2.5-flash", "gemini-flash-lite-latest"];
+        
+        let responseText = null;
+        let lastError = null;
+
+        for (const currentModel of fallbackModels) {
+            try {
+                const model = genAI.getGenerativeModel({ model: currentModel });
+                const result = await model.generateContent(prompt);
+                responseText = result.response.text();
+                break; // Succès ! On sort de la boucle.
+            } catch (error) {
+                console.error(`Erreur avec le modèle ${currentModel}:`, error.message);
+                lastError = error;
+                // La boucle continue pour essayer le modèle suivant
+            }
+        }
+
+        if (!responseText) {
+            throw new Error("Tous les modèles d'IA sont actuellement surchargés chez Google. Veuillez réessayer dans quelques minutes. (" + lastError.message + ")");
+        }
         
         // Nettoyage au cas où l'IA ajoute des balises Markdown (ex: ```json ... ```)
         responseText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
