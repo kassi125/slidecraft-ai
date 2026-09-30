@@ -26,11 +26,10 @@ app.post('/api/generate', async (req, res) => {
 
         // Le SDK officiel gère automatiquement la bonne version de l'API (v1, v1beta) et le bon routage !
         const genAI = new GoogleGenerativeAI(apiKey);
-        // On permet de surcharger le modèle via l'environnement, sinon on utilise gemini-1.5-flash-latest
-        const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash-latest";
+        // Utilisation de "gemini-pro" (la version universellement disponible) pour éviter toute erreur 404
+        const modelName = process.env.GEMINI_MODEL || "gemini-pro";
         const model = genAI.getGenerativeModel({
-            model: modelName,
-            generationConfig: { responseMimeType: "application/json" }
+            model: modelName
         });
 
         const prompt = `
@@ -54,7 +53,10 @@ app.post('/api/generate', async (req, res) => {
         `;
 
         const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
+        let responseText = result.response.text();
+        
+        // Nettoyage au cas où l'IA ajoute des balises Markdown (ex: ```json ... ```)
+        responseText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
         
         // On convertit directement en objet JSON côté serveur
         const jsonResult = JSON.parse(responseText);
