@@ -53,8 +53,16 @@
     </div>
 
     <script>
+        // Charger la clé API sauvegardée
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('gemini_api_key');
+            if (savedKey) document.getElementById('apiKey').value = savedKey;
+        });
+
         async function processDocument() {
             const apiKey = document.getElementById('apiKey').value.trim();
+            if (apiKey) localStorage.setItem('gemini_api_key', apiKey);
+            
             const fileInput = document.getElementById('fileInput');
             const statusArea = document.getElementById('statusArea');
             const statusText = document.getElementById('statusText');
