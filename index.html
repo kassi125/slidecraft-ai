@@ -158,21 +158,31 @@
     </div>
 
     <script>
-        // Sauvegarder le thème personnalisé dans le navigateur
+        // Sauvegarder le thème personnalisé via l'URL (Sans LocalStorage)
         function saveTheme() {
-            const theme = {
-                titleColor: document.getElementById('titleColor').value,
-                bgColor: document.getElementById('bgColor').value,
-                textColor: document.getElementById('textColor').value,
-                fontSelect: document.getElementById('fontSelect').value
-            };
-            localStorage.setItem('slidecraft_saved_theme', JSON.stringify(theme));
+            const titleColor = document.getElementById('titleColor').value.replace('#', '');
+            const bgColor = document.getElementById('bgColor').value.replace('#', '');
+            const textColor = document.getElementById('textColor').value.replace('#', '');
+            const fontSelect = document.getElementById('fontSelect').value;
+            
+            // Créer une URL avec les paramètres
+            const params = new URLSearchParams();
+            params.set('t', titleColor);
+            params.set('b', bgColor);
+            params.set('x', textColor);
+            params.set('f', fontSelect);
+            
+            const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?' + params.toString();
+            
+            // Mettre à jour l'URL sans recharger la page
+            window.history.pushState({path:newUrl}, '', newUrl);
             
             const savedOption = document.getElementById('savedThemeOption');
+            savedOption.innerText = "🔗 Mon Thème (Lien Partagé)";
             savedOption.classList.remove('hidden');
             document.getElementById('presetTheme').value = 'saved';
             
-            alert("✅ Votre thème a été mémorisé avec succès ! Il sera automatiquement chargé à votre prochaine visite.");
+            alert("✅ L'URL de la page a été mise à jour avec vos couleurs !\n\nMettez simplement cette page dans vos Favoris (Marque-pages) ou copiez le lien pour retrouver ce thème exact la prochaine fois !");
         }
 
         // Appliquer les réglages d'un thème prédéfini
@@ -192,24 +202,35 @@
             } else if (preset === 'minimal') {
                 titleColor.value = "#334155"; bgColor.value = "#F8FAFC"; textColor.value = "#64748B"; fontSelect.value = "Helvetica";
             } else if (preset === 'saved') {
-                const saved = JSON.parse(localStorage.getItem('slidecraft_saved_theme'));
-                if (saved) {
-                    titleColor.value = saved.titleColor;
-                    bgColor.value = saved.bgColor;
-                    textColor.value = saved.textColor;
-                    fontSelect.value = saved.fontSelect;
+                // Si on re-sélectionne le thème de l'URL manuellement
+                const params = new URLSearchParams(window.location.search);
+                if (params.has('t')) {
+                    titleColor.value = '#' + params.get('t');
+                    bgColor.value = '#' + params.get('b');
+                    textColor.value = '#' + params.get('x');
+                    fontSelect.value = params.get('f');
                 }
             }
         }
 
-        // Charger le thème au démarrage
+        // Charger le thème depuis l'URL au démarrage
         document.addEventListener('DOMContentLoaded', () => {
-            const saved = localStorage.getItem('slidecraft_saved_theme');
-            if (saved) {
-                document.getElementById('savedThemeOption').classList.remove('hidden');
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('t') && params.has('b') && params.has('x') && params.has('f')) {
+                // Remplir les champs avec l'URL
+                document.getElementById('titleColor').value = '#' + params.get('t');
+                document.getElementById('bgColor').value = '#' + params.get('b');
+                document.getElementById('textColor').value = '#' + params.get('x');
+                document.getElementById('fontSelect').value = params.get('f');
+                
+                // Afficher l'option personnalisée
+                const savedOption = document.getElementById('savedThemeOption');
+                savedOption.innerText = "🔗 Mon Thème (Lien Partagé)";
+                savedOption.classList.remove('hidden');
                 document.getElementById('presetTheme').value = 'saved';
+            } else {
+                applyPreset(); // Thème Pro par défaut
             }
-            applyPreset();
         });
 
         async function processDocument() {
