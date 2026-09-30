@@ -39,8 +39,8 @@ app.post('/api/generate', async (req, res) => {
 
         // Le SDK officiel gère automatiquement la bonne version de l'API (v1, v1beta) et le bon routage !
         const genAI = new GoogleGenerativeAI(apiKey);
-        // Utilisation de "gemini-pro" par défaut, avec nettoyage des espaces au cas où
-        const modelName = (process.env.GEMINI_MODEL || "gemini-pro").trim();
+        // Utilisation de "gemini-flash-latest" d'après la liste des modèles disponibles sur ce compte
+        const modelName = (process.env.GEMINI_MODEL || "gemini-flash-latest").trim();
         const model = genAI.getGenerativeModel({
             model: modelName
         });
