@@ -126,7 +126,7 @@
 
         async function generateSlidesWithAI(apiKey, text) {
             // Limiter la taille du texte par sécurité si très long, mais Gemini 1.5 flash gère 1M tokens.
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
             
             const prompt = `
             Tu es un expert en création de présentations professionnelles. 
