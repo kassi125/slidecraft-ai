@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: slidecraft-ai
+    env: static
+    buildCommand: '' # Aucun build nécessaire pour du HTML simple
+    staticPublishPath: ./ # Le dossier contenant index.html
+    autoDeploy: true
