@@ -59,13 +59,13 @@ Tu dois STRICTEMENT renvoyer un objet JSON valide avec cette structure exacte, s
 }`;
 
         const preferredModel = (process.env.OPENAI_MODEL || "gpt-4o-mini").trim();
-        // Liste de modèles de secours en cas de saturation ou problème sur un modèle spécifique
-        const modelsToTry = [preferredModel, "gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
+        // Liste de modèles modernes OpenAI (sans gpt-3.5-turbo qui est déprécié)
+        const modelsToTry = [preferredModel, "gpt-4o-mini", "gpt-4o"]
             .filter((val, idx, self) => self.indexOf(val) === idx);
 
         const openai = new OpenAI({ apiKey });
         let responseText = null;
-        let lastError = null;
+        const modelErrors = [];
 
         for (const currentModel of modelsToTry) {
             try {
@@ -84,13 +84,27 @@ Tu dois STRICTEMENT renvoyer un objet JSON valide avec cette structure exacte, s
                     break; // Succès !
                 }
             } catch (error) {
-                console.error(`Erreur avec le modèle OpenAI ${currentModel}:`, error.message);
-                lastError = error;
+                console.error(`Erreur avec le modèle OpenAI ${currentModel}:`, error.status, error.message);
+                modelErrors.push(`[${currentModel}] ${error.message}`);
+
+                // Si c'est un problème d'authentification ou de solde/crédits, inutile de retenter avec les autres modèles
+                if (error.status === 401) {
+                    return res.status(401).json({ 
+                        error: "Clé API OpenAI invalide ou révoquée. Veuillez vérifier votre clé OPENAI_API_KEY sur Render." 
+                    });
+                }
+                if (error.status === 429 && error.message && error.message.toLowerCase().includes('quota')) {
+                    return res.status(429).json({ 
+                        error: "Crédits OpenAI insuffisants (Quota dépassé). Sur l'API payante d'OpenAI, il est nécessaire d'avoir un solde positif (minimum 5$) sur votre compte : https://platform.openai.com/settings/organization/billing" 
+                    });
+                }
             }
         }
 
         if (!responseText) {
-            throw new Error(lastError ? lastError.message : "Impossible d'obtenir une réponse de ChatGPT.");
+            return res.status(500).json({
+                error: "Erreur OpenAI : " + modelErrors.join(" | ")
+            });
         }
 
         // Nettoyage au cas où des balises markdown seraient présentes
