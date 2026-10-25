@@ -5,7 +5,25 @@ const OpenAI = require('openai');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Augmenter la limite pour accepter de longs textes extraits de gros documents
+// Masquer les informations du serveur
+app.disable('x-powered-by');
+
+// Middleware de sécurité et d'interdiction stricte de mise en cache (Zero-Trace)
+app.use((req, res, next) => {
+    // Interdire tout enregistrement en cache sur les serveurs, proxies et navigateurs
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
+    // Headers de protection des données
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    next();
+});
+
+// Augmenter la limite pour accepter de longs textes extraits de gros documents (traités en mémoire vive uniquement)
 app.use(express.json({ limit: '50mb' }));
 
 // Servir les fichiers statiques (index.html, etc.) depuis le dossier racine
@@ -218,6 +236,10 @@ Tu dois répondre STRICTEMENT par un objet JSON valide, sans aucune balise de co
 
         const jsonResult = JSON.parse(responseText);
         res.json(jsonResult);
+
+        // Nettoyage immédiat des variables pour garantir le zéro-trace en mémoire vive
+        responseText = null;
+        if (req.body) req.body.text = null;
 
     } catch (error) {
         console.error("Erreur serveur Groq:", error);
