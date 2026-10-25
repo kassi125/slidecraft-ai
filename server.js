@@ -1,35 +1,38 @@
 const express = require('express');
 const path = require('path');
+const OpenAI = require('openai');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Augmenter la limite pour accepter de longs textes extraits de gros PDF
+// Augmenter la limite pour accepter de longs textes extraits de gros documents
 app.use(express.json({ limit: '50mb' }));
 
-// Servir les fichiers statiques (index.html) depuis le dossier racine
+// Servir les fichiers statiques (index.html, etc.) depuis le dossier racine
 app.use(express.static(__dirname));
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-
-// Route diagnostic pour voir les modèles disponibles avec cette clé API
+// Route diagnostic pour vérifier la connexion et lister les modèles accessibles avec la clé OpenAI
 app.get('/api/models', async (req, res) => {
     try {
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) return res.status(500).json({ error: "No API key configured" });
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-        const data = await response.json();
-        res.json(data);
+        const apiKey = process.env.OPENAI_API_KEY || process.env.CHATGPT_API_KEY;
+        if (!apiKey) return res.status(500).json({ error: "La variable OPENAI_API_KEY n'est pas configurée." });
+        
+        const openai = new OpenAI({ apiKey });
+        const list = await openai.models.list();
+        res.json(list);
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
 });
 
-// Route API pour faire la requête cachée vers Gemini
+// Route API principale : envoi du texte à ChatGPT (OpenAI)
 app.post('/api/generate', async (req, res) => {
     try {
-        const apiKey = process.env.GEMINI_API_KEY;
+        const apiKey = process.env.OPENAI_API_KEY || process.env.CHATGPT_API_KEY;
         if (!apiKey) {
-            return res.status(500).json({ error: "La clé API n'est pas configurée sur le serveur Render." });
+            return res.status(500).json({ 
+                error: "La clé API OpenAI (ChatGPT) n'est pas configurée. Veuillez ajouter la variable d'environnement OPENAI_API_KEY sur votre tableau de bord Render." 
+            });
         }
 
         const text = req.body.text;
@@ -40,70 +43,73 @@ app.post('/api/generate', async (req, res) => {
         const theme = req.body.theme || "";
         const themeInstruction = theme ? `\nIMPORTANT - THÈME DEMANDÉ : Le créateur souhaite ce thème ou style particulier : "${theme}". Adapte le ton, le style et le choix des informations en fonction de cette demande.\n` : "";
 
-        // Le SDK officiel gère automatiquement la bonne version de l'API (v1, v1beta) et le bon routage !
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const prompt = `
-        Tu es un expert en création de présentations professionnelles. 
-        Lis le texte fourni et extrais les informations les plus importantes pour créer une présentation PowerPoint claire et concise.
-        Conserve la langue originale du document.${themeInstruction}
-        
-        Le résultat doit être STRICTEMENT un objet JSON avec la structure suivante, sans aucun autre texte autour, sans bloc markdown de code :
-        {
-            "presentation_title": "Titre principal",
-            "slides": [
-                {
-                    "title": "Titre de la diapositive",
-                    "bullet_points": ["Point clé 1", "Point clé 2"]
-                }
-            ]
-        }
-        
-        Texte à résumer :
-        ${text}
-        `;
+        const systemPrompt = `Tu es un expert en création de présentations professionnelles. 
+Lis le texte fourni et extrais les informations les plus importantes pour créer une présentation PowerPoint claire et concise.
+Conserve la langue originale du document.${themeInstruction}
 
-        const preferredModel = (process.env.GEMINI_MODEL || "gemini-flash-latest").trim();
-        // Liste de secours en cas d'erreur 503 (surcharge des serveurs Google)
-        const fallbackModels = [preferredModel, "gemini-3.5-flash", "gemini-2.5-flash", "gemini-flash-lite-latest"];
-        
+Tu dois STRICTEMENT renvoyer un objet JSON valide avec cette structure exacte, sans aucun texte additionnel :
+{
+    "presentation_title": "Titre principal",
+    "slides": [
+        {
+            "title": "Titre de la diapositive",
+            "bullet_points": ["Point clé 1", "Point clé 2"]
+        }
+    ]
+}`;
+
+        const preferredModel = (process.env.OPENAI_MODEL || "gpt-4o-mini").trim();
+        // Liste de modèles de secours en cas de saturation ou problème sur un modèle spécifique
+        const modelsToTry = [preferredModel, "gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
+            .filter((val, idx, self) => self.indexOf(val) === idx);
+
+        const openai = new OpenAI({ apiKey });
         let responseText = null;
         let lastError = null;
 
-        for (const currentModel of fallbackModels) {
+        for (const currentModel of modelsToTry) {
             try {
-                const model = genAI.getGenerativeModel({ model: currentModel });
-                const result = await model.generateContent(prompt);
-                responseText = result.response.text();
-                break; // Succès ! On sort de la boucle.
+                const completion = await openai.chat.completions.create({
+                    model: currentModel,
+                    messages: [
+                        { role: "system", content: systemPrompt },
+                        { role: "user", content: `Voici le document à transformer en diapositives PowerPoint :\n\n${text}` }
+                    ],
+                    response_format: { type: "json_object" },
+                    temperature: 0.7
+                });
+
+                responseText = completion.choices[0]?.message?.content;
+                if (responseText) {
+                    break; // Succès !
+                }
             } catch (error) {
-                console.error(`Erreur avec le modèle ${currentModel}:`, error.message);
+                console.error(`Erreur avec le modèle OpenAI ${currentModel}:`, error.message);
                 lastError = error;
-                // La boucle continue pour essayer le modèle suivant
             }
         }
 
         if (!responseText) {
-            throw new Error("Tous les modèles d'IA sont actuellement surchargés chez Google. Veuillez réessayer dans quelques minutes. (" + lastError.message + ")");
+            throw new Error(lastError ? lastError.message : "Impossible d'obtenir une réponse de ChatGPT.");
         }
-        
-        // Nettoyage au cas où l'IA ajoute des balises Markdown (ex: ```json ... ```)
+
+        // Nettoyage au cas où des balises markdown seraient présentes
         responseText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
-        
-        // On convertit directement en objet JSON côté serveur
+
         const jsonResult = JSON.parse(responseText);
         res.json(jsonResult);
 
     } catch (error) {
-        console.error("Erreur serveur Gemini:", error);
+        console.error("Erreur serveur OpenAI / ChatGPT:", error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Rediriger n'importe quelle autre route vers l'index HTML
+// Rediriger n'importe quelle autre route vers index.html
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Server SlideCraft AI (ChatGPT) is running on port ${PORT}`);
 });

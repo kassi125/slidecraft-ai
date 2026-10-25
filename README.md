@@ -1,31 +1,23 @@
 # ✨ SlideCraft AI
 
-Transformez vos documents PDF et Word en présentations PowerPoint (.pptx) structurées grâce à l'Intelligence Artificielle, en un seul clic ! 
-
-Cette application fonctionne **100% dans votre navigateur**, sans aucune installation requise sur votre ordinateur et sans serveur backend (base de données). Vos données sont traitées directement chez vous.
+Transformez vos documents PDF et Word en présentations PowerPoint (.pptx) professionnelles grâce à ChatGPT (OpenAI), en un seul clic !
 
 ## 🚀 Fonctionnalités
 
 - **Lecture de documents** : Extraction automatique du texte depuis les fichiers `.pdf` et `.docx`.
-- **Génération par l'IA** : Résumé et structuration en diapositives via l'API gratuite de Google Gemini.
-- **Création de PPTX** : Assemblage et téléchargement du fichier PowerPoint généré instantanément.
-- **Sécurité et Vie Privée** : 100% Client-Side. Vos documents ne sont envoyés sur aucun serveur (hormis vers l'API de Google pour l'IA).
+- **Génération IA par ChatGPT (OpenAI)** : Résumé et structuration en diapositives via les modèles OpenAI (`gpt-4o-mini`, `gpt-4o`, etc.).
+- **Création de PPTX** : Assemblage et téléchargement automatique du fichier PowerPoint.
+- **Personnalisation** : Thèmes de couleur, choix de police, mode sombre, thèmes partageables via URL.
+- **Sécurité** : Clé API stockée côté serveur (Render) de façon totalement confidentielle.
 
-## 🛠️ Comment l'utiliser ?
+## 🛠️ Configuration (Render)
 
-1. **Ouvrir l'application** : Accédez au lien web (si hébergé sur GitHub Pages) ou double-cliquez simplement sur le fichier `index.html` pour l'ouvrir dans Chrome, Edge ou Firefox.
-2. **Clé API** : Obtenez une clé API Gemini gratuite sur [Google AI Studio](https://aistudio.google.com/app/apikey).
-3. **Génération** : 
-   - Collez votre clé dans le champ prévu.
-   - Sélectionnez un document (PDF ou Word).
-   - Cliquez sur "Générer la présentation".
-4. Le fichier `.pptx` se télécharge automatiquement en quelques secondes !
+1. Déployez le projet sur Render (Web Service Node.js ou Docker).
+2. Dans l'onglet **Environment** de Render, ajoutez la variable :
+   - `OPENAI_API_KEY` : Votre clé API OpenAI (commençant par `sk-...`).
+   - *(Optionnel)* `OPENAI_MODEL` : `gpt-4o-mini` (par défaut), `gpt-4o`, etc.
 
 ## 💻 Technologies utilisées
 
-Cette application est constituée d'un seul fichier HTML utilisant les librairies suivantes via CDN :
-- **[Tailwind CSS](https://tailwindcss.com/)** : Pour une interface propre et moderne.
-- **[PDF.js](https://mozilla.github.io/pdf.js/)** (Mozilla) : Pour l'extraction du texte des PDF.
-- **[Mammoth.js](https://github.com/mwilliamson/mammoth.js)** : Pour l'extraction du texte des fichiers Word.
-- **[PptxGenJS](https://gitbrent.github.io/PptxGenJS/)** : Pour la construction du fichier PowerPoint en JavaScript.
-- **[API Google Gemini](https://ai.google.dev/)** : Le moteur d'intelligence artificielle.
+- **Backend** : Node.js, Express, SDK OpenAI (`openai`).
+- **Frontend** : Tailwind CSS, PDF.js, Mammoth.js, PptxGenJS.

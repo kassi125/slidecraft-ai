@@ -7,7 +7,7 @@ WORKDIR /app
 # Copier les fichiers package.json
 COPY package*.json ./
 
-# Installer les dépendances (Express, Google SDK)
+# Installer les dépendances (Express, OpenAI SDK)
 RUN npm install
 
 # Copier le reste des fichiers du projet (server.js, index.html, etc.)
