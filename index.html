@@ -84,18 +84,30 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-2">Thème prédéfini</label>
-                            <select id="presetTheme" onchange="applyPreset()" class="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all">
+                            <select id="presetTheme" onchange="applyPreset()" class="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all font-medium">
                                 <option id="savedThemeOption" value="saved" class="hidden">⭐ Mon Thème Sauvegardé</option>
-                                <option value="custom">-- Personnalisé --</option>
-                                <option value="pro" selected>👔 Corporate (Bleu/Blanc)</option>
-                                <option value="dark">🌙 Mode Sombre (Gris foncé)</option>
-                                <option value="creative">🎨 Créatif (Chaud/Crème)</option>
-                                <option value="minimal">🌿 Épuré (Gris clair/Blanc)</option>
+                                <option value="custom">⚙️ Personnalisé</option>
+                                <optgroup label="💼 Business & Corporate">
+                                    <option value="pro" selected>👔 Corporate (Bleu Marine / Blanc)</option>
+                                    <option value="tech">⚡ Tech & Startup (Indigo / Ardoise)</option>
+                                    <option value="academic">🏛️ Académique (Bleu Royal / Ivoire)</option>
+                                </optgroup>
+                                <optgroup label="🎨 Créatif & Élégance">
+                                    <option value="creative">☀️ Énergie Créative (Ambre / Vanille)</option>
+                                    <option value="luxury">🍷 Luxe & Prestige (Bordeaux / Crème)</option>
+                                    <option value="nature">🌲 Éco & Nature (Vert Forêt / Menthe)</option>
+                                    <option value="pastel">🌸 Doux & Lifestyle (Rose Poudré / Perle)</option>
+                                </optgroup>
+                                <optgroup label="📐 Moderne & Épuré">
+                                    <option value="dark">🌙 Mode Sombre (Blanc / Nuit Ébène)</option>
+                                    <option value="minimal">🌿 Épuré Nordique (Anthracite / Blanc)</option>
+                                    <option value="pitch">🎯 Pitch Deck (Noir / Jaune Dynamique)</option>
+                                </optgroup>
                             </select>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-2">Typographie</label>
-                            <select id="fontSelect" class="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all">
+                            <select id="fontSelect" onchange="markCustom()" class="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all">
                                 <option value="Arial">Arial (Standard)</option>
                                 <option value="Helvetica">Helvetica (Moderne)</option>
                                 <option value="Times New Roman">Times New Roman (Classique)</option>
@@ -105,15 +117,15 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-2">Couleur des Titres</label>
-                            <input type="color" id="titleColor" value="#003366" class="w-full h-12 p-1 bg-white border border-slate-300 rounded-lg cursor-pointer">
+                            <input type="color" id="titleColor" value="#003366" oninput="markCustom()" class="w-full h-12 p-1 bg-white border border-slate-300 rounded-lg cursor-pointer">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-2">Couleur de Fond</label>
-                            <input type="color" id="bgColor" value="#FFFFFF" class="w-full h-12 p-1 bg-white border border-slate-300 rounded-lg cursor-pointer">
+                            <input type="color" id="bgColor" value="#FFFFFF" oninput="markCustom()" class="w-full h-12 p-1 bg-white border border-slate-300 rounded-lg cursor-pointer">
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm font-medium text-slate-700 mb-2">Couleur du Texte (Contenu)</label>
-                            <input type="color" id="textColor" value="#333333" class="w-full h-12 p-1 bg-white border border-slate-300 rounded-lg cursor-pointer">
+                            <input type="color" id="textColor" value="#333333" oninput="markCustom()" class="w-full h-12 p-1 bg-white border border-slate-300 rounded-lg cursor-pointer">
                         </div>
                     </div>
                     <div class="mt-4 flex justify-end">
@@ -185,6 +197,25 @@
             alert("✅ L'URL de la page a été mise à jour avec vos couleurs !\n\nMettez simplement cette page dans vos Favoris (Marque-pages) ou copiez le lien pour retrouver ce thème exact la prochaine fois !");
         }
 
+        // Marquer comme thème personnalisé quand l'utilisateur touche aux réglages
+        function markCustom() {
+            document.getElementById('presetTheme').value = 'custom';
+        }
+
+        // Dictionnaire des thèmes prédéfinis professionnels
+        const PRESET_THEMES = {
+            pro: { title: "#003366", bg: "#FFFFFF", text: "#333333", font: "Arial" },
+            tech: { title: "#4F46E5", bg: "#F8FAFC", text: "#1E293B", font: "Helvetica" },
+            academic: { title: "#1E3A8A", bg: "#FDFBF7", text: "#374151", font: "Times New Roman" },
+            creative: { title: "#D97706", bg: "#FFFDF7", text: "#451A03", font: "Trebuchet MS" },
+            luxury: { title: "#581845", bg: "#FAF5F0", text: "#3E2723", font: "Georgia" },
+            nature: { title: "#1B4332", bg: "#F2F7F4", text: "#2D3748", font: "Trebuchet MS" },
+            pastel: { title: "#BE185D", bg: "#FDF2F8", text: "#4A044E", font: "Georgia" },
+            dark: { title: "#FFFFFF", bg: "#1E293B", text: "#F8FAFC", font: "Helvetica" },
+            minimal: { title: "#334155", bg: "#FFFFFF", text: "#64748B", font: "Helvetica" },
+            pitch: { title: "#0F172A", bg: "#FEF9C3", text: "#1E293B", font: "Arial" }
+        };
+
         // Appliquer les réglages d'un thème prédéfini
         function applyPreset() {
             const preset = document.getElementById('presetTheme').value;
@@ -193,14 +224,12 @@
             const textColor = document.getElementById('textColor');
             const fontSelect = document.getElementById('fontSelect');
 
-            if (preset === 'pro') {
-                titleColor.value = "#003366"; bgColor.value = "#FFFFFF"; textColor.value = "#333333"; fontSelect.value = "Arial";
-            } else if (preset === 'dark') {
-                titleColor.value = "#FFFFFF"; bgColor.value = "#1E293B"; textColor.value = "#F8FAFC"; fontSelect.value = "Helvetica";
-            } else if (preset === 'creative') {
-                titleColor.value = "#EA580C"; bgColor.value = "#FFFBEB"; textColor.value = "#334155"; fontSelect.value = "Trebuchet MS";
-            } else if (preset === 'minimal') {
-                titleColor.value = "#334155"; bgColor.value = "#F8FAFC"; textColor.value = "#64748B"; fontSelect.value = "Helvetica";
+            if (PRESET_THEMES[preset]) {
+                const config = PRESET_THEMES[preset];
+                titleColor.value = config.title;
+                bgColor.value = config.bg;
+                textColor.value = config.text;
+                fontSelect.value = config.font;
             } else if (preset === 'saved') {
                 // Si on re-sélectionne le thème de l'URL manuellement
                 const params = new URLSearchParams(window.location.search);
