@@ -1,23 +1,24 @@
 # ✨ SlideCraft AI
 
-Transformez vos documents PDF et Word en présentations PowerPoint (.pptx) professionnelles grâce à ChatGPT (OpenAI), en un seul clic !
+Transformez vos documents PDF et Word en présentations PowerPoint (.pptx) professionnelles grâce à **Groq (Llama 3.3 70B)**, en un seul clic !
 
 ## 🚀 Fonctionnalités
 
 - **Lecture de documents** : Extraction automatique du texte depuis les fichiers `.pdf` et `.docx`.
-- **Génération IA par ChatGPT (OpenAI)** : Résumé et structuration en diapositives via les modèles OpenAI (`gpt-4o-mini`, `gpt-4o`, etc.).
+- **Génération IA ultra-rapide par Groq (100% Gratuit)** : Résumé et structuration en diapositives via le modèle surpuissant `llama-3.3-70b-versatile` de Meta.
 - **Création de PPTX** : Assemblage et téléchargement automatique du fichier PowerPoint.
-- **Personnalisation** : Thèmes de couleur, choix de police, mode sombre, thèmes partageables via URL.
+- **10 Thèmes Prédéfinis** : Corporate, Tech, Académique, Luxe, Éco, Pitch Deck, etc.
+- **Sauvegarde d'URL** : Thèmes personnalisés partageables instantanément par lien.
 - **Sécurité** : Clé API stockée côté serveur (Render) de façon totalement confidentielle.
 
 ## 🛠️ Configuration (Render)
 
-1. Déployez le projet sur Render (Web Service Node.js ou Docker).
-2. Dans l'onglet **Environment** de Render, ajoutez la variable :
-   - `OPENAI_API_KEY` : Votre clé API OpenAI (commençant par `sk-...`).
-   - *(Optionnel)* `OPENAI_MODEL` : `gpt-4o-mini` (par défaut), `gpt-4o`, etc.
+1. Obtenez votre clé API Groq gratuite sur **[console.groq.com/keys](https://console.groq.com/keys)** (sans carte bancaire).
+2. Déployez le projet sur Render (Web Service).
+3. Dans l'onglet **Environment** de Render, ajoutez la variable :
+   - `GROQ_API_KEY` : Votre clé API Groq (commençant par `gsk_...`).
 
 ## 💻 Technologies utilisées
 
-- **Backend** : Node.js, Express, SDK OpenAI (`openai`).
+- **Backend** : Node.js, Express, Groq API (via SDK OpenAI).
 - **Frontend** : Tailwind CSS, PDF.js, Mammoth.js, PptxGenJS.
