@@ -64,17 +64,44 @@ app.post('/api/generate', async (req, res) => {
         const theme = req.body.theme || "";
         const themeInstruction = theme ? `\nIMPORTANT - THÈME DEMANDÉ : Le créateur souhaite ce thème ou style particulier : "${theme}". Adapte le ton, le style et le choix des informations en fonction de cette demande.\n` : "";
 
-        const systemPrompt = `Tu es un expert en création de présentations professionnelles. 
-Lis le texte fourni et extrais les informations les plus importantes pour créer une présentation PowerPoint claire et concise.
-Conserve la langue originale du document.${themeInstruction}
+        const systemPrompt = `Tu es un consultant senior en stratégie et un expert de premier plan en création de présentations exécutives (standards McKinsey, BCG, Bain).
 
-Tu dois STRICTEMENT renvoyer un objet JSON valide avec cette structure exacte, sans aucun texte additionnel :
+🎯 TON OBJECTIF :
+Analyser EN PROFONDEUR le document fourni pour en extraire l'essence stratégique, les enjeux cruciaux et les enseignements majeurs, puis les convertir en une présentation PowerPoint d'une qualité irréprochable et à forte valeur ajoutée.
+
+🧠 MÉTHODOLOGIE D'ANALYSE APPROFONDIE :
+1. COMPRÉHENSION & SENS CRITIQUE :
+   - Ne te contente JAMAIS d'un survol ou d'un résumé superficiel.
+   - Identifie la thèse centrale, le contexte historique/opérationnel, les causes profondes, les freins, les opportunités et les conclusions majeures du document.
+   - Extrais et mets impérativement en valeur les données concrètes : chiffres clés, pourcentages, ratios, métriques, dates et faits factuels précis.
+
+2. STRUCTURE NARRATIVE & STORYTELLING :
+   - Structure une suite logique, fluide et percutante de diapositives (généralement 6 à 10 diapositives selon la consistance du document) :
+     * Slide 1 : Titre principal évocateur et sous-titre de cadrage.
+     * Slide 2 : Contexte, vision globale et problématique centrale.
+     * Slides intermédiaires : Décomposition analytique détaillée (piliers stratégiques, analyse sectorielle/technique, résultats démontrés, leviers de performance, risques).
+     * Slide finale : Recommandations stratégiques concrètes, plan d'action ou prochaines étapes clés.
+
+3. QUALITÉ ET PROFONDEUR DES POINTS (BULLET POINTS) :
+   - Chaque diapositive doit comporter 3 à 5 points clés substantiels et denses en information.
+   - BANNIS FORMELLEMENT les puces creuses de 3 mots (ex: "Améliorer les ventes", "Développer le projet").
+   - Chaque puce doit être formulée avec une idée forte étayée par une justification, un chiffre ou un exemple concret (Format recommandé : "Idée directrice : explication approfondie et impact mesurable").
+
+4. ADAPTATION AU THÈME & LANGUE :
+   - Conserve scrupuleusement la langue d'origine du document.${themeInstruction}
+
+📋 FORMAT DE SORTIE STRICT :
+Tu dois répondre STRICTEMENT par un objet JSON valide, sans aucune balise de code ni texte introductif/conclusif, avec cette structure exacte :
 {
-    "presentation_title": "Titre principal",
+    "presentation_title": "Titre Stratégique Percutant",
     "slides": [
         {
-            "title": "Titre de la diapositive",
-            "bullet_points": ["Point clé 1", "Point clé 2"]
+            "title": "Titre explicite et informatif de la diapositive",
+            "bullet_points": [
+                "Idée force 1 : explication détaillée, chiffre clé et impact concret",
+                "Idée force 2 : explication détaillée, chiffre clé et impact concret",
+                "Idée force 3 : explication détaillée, chiffre clé et impact concret"
+            ]
         }
     ]
 }`;
@@ -140,10 +167,10 @@ Tu dois STRICTEMENT renvoyer un objet JSON valide avec cette structure exacte, s
                         model: currentModel,
                         messages: [
                             { role: "system", content: systemPrompt },
-                            { role: "user", content: `Voici le document à transformer en diapositives PowerPoint :\n\n${text}` }
+                            { role: "user", content: `DOCUMENT À ANALYSER EN PROFONDEUR :\n=========================================\n${text}\n=========================================\n\nProcède à une analyse approfondie et synthétise ce document en une présentation PowerPoint stratégique et détaillée au format JSON demandé.` }
                         ],
                         response_format: { type: "json_object" },
-                        temperature: 0.4
+                        temperature: 0.3
                     });
                 } catch (formatErr) {
                     // Si le modèle ne supporte pas response_format json_object, réessayer en mode texte standard
@@ -152,9 +179,9 @@ Tu dois STRICTEMENT renvoyer un objet JSON valide avec cette structure exacte, s
                             model: currentModel,
                             messages: [
                                 { role: "system", content: systemPrompt },
-                                { role: "user", content: `Voici le document à transformer en diapositives PowerPoint :\n\n${text}` }
+                                { role: "user", content: `DOCUMENT À ANALYSER EN PROFONDEUR :\n=========================================\n${text}\n=========================================\n\nProcède à une analyse approfondie et synthétise ce document en une présentation PowerPoint stratégique et détaillée au format JSON demandé.` }
                             ],
-                            temperature: 0.4
+                            temperature: 0.3
                         });
                     } else {
                         throw formatErr;

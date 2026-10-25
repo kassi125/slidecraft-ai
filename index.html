@@ -291,17 +291,17 @@
             btn.classList.add('opacity-50', 'cursor-not-allowed', 'transform-none', 'hover:shadow-lg');
 
             try {
-                updateStatus("Extraction du texte du document...");
+                updateStatus("📄 Extraction du texte du document...");
                 const text = await extractTextFromFile(file);
 
-                updateStatus("Analyse IA en cours (10 à 20 secondes)...");
+                updateStatus("🔍 Analyse approfondie et structuration stratégique des diapositives...");
                 const slidesData = await generateSlidesWithAI(text, theme);
 
-                updateStatus("Création visuelle du PowerPoint...");
+                updateStatus("🎨 Construction visuelle de la présentation PowerPoint...");
                 await createPPTX(slidesData, file.name, designOptions);
 
                 spinner.classList.add('hidden');
-                updateStatus("✅ Terminé ! Le PowerPoint a été téléchargé.");
+                updateStatus("✅ Terminé ! Votre présentation approfondie a été téléchargée.");
             } catch (error) {
                 console.error(error);
                 spinner.classList.add('hidden');
@@ -369,35 +369,46 @@
 
             // Slides de contenu
             if (slidesData.slides && Array.isArray(slidesData.slides)) {
-                slidesData.slides.forEach(slideInfo => {
+                const totalSlides = slidesData.slides.length;
+                slidesData.slides.forEach((slideInfo, idx) => {
                     let slide = pptx.addSlide();
                     slide.background = { color: design.bgColor };
                     
                     // Ligne de décoration (Style pro)
-                    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 0.5, w: 0.1, h: 0.6, fill: { color: design.titleColor } });
+                    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 0.45, w: 0.1, h: 0.65, fill: { color: design.titleColor } });
                     
                     // Titre de la slide
                     slide.addText(slideInfo.title || "Détails", {
-                        x: 0.8, y: 0.45, w: 8.5, h: 0.8,
-                        fontSize: 32, bold: true, color: design.titleColor, fontFace: design.fontFace
+                        x: 0.8, y: 0.4, w: 8.5, h: 0.8,
+                        fontSize: 28, bold: true, color: design.titleColor, fontFace: design.fontFace
                     });
                     
                     // Ligne de séparation subtile
-                    slide.addShape(pptx.ShapeType.line, { x: 0.5, y: 1.3, w: 9, h: 0, line: { color: design.textColor, width: 1, dashType: "solid" }, transparency: 80 });
+                    slide.addShape(pptx.ShapeType.line, { x: 0.5, y: 1.25, w: 9, h: 0, line: { color: design.textColor, width: 1, dashType: "solid" }, transparency: 80 });
 
-                    // Puces
+                    // Puces avec taille adaptative pour le contenu approfondi
                     if (slideInfo.bullet_points && Array.isArray(slideInfo.bullet_points)) {
+                        const count = slideInfo.bullet_points.length;
+                        const fontSize = count > 4 ? 15 : (count > 3 ? 16 : 18);
+                        const spacing = count > 4 ? 22 : 28;
+
                         let bulletItems = slideInfo.bullet_points.map(point => ({
                             text: point,
-                            options: { bullet: { type: 'number' }, fontSize: 20, color: design.textColor, breakLine: true, fontFace: design.fontFace }
+                            options: { bullet: { type: 'number' }, fontSize: fontSize, color: design.textColor, breakLine: true, fontFace: design.fontFace }
                         }));
                         
                         slide.addText(bulletItems, {
-                            x: 0.5, y: 1.6, w: 9, h: 4,
+                            x: 0.5, y: 1.45, w: 9, h: 3.7,
                             valign: "top",
-                            lineSpacing: 35
+                            lineSpacing: spacing
                         });
                     }
+
+                    // Numéro de slide discret et élégant
+                    slide.addText(`${idx + 1} / ${totalSlides}`, {
+                        x: 8.2, y: 5.2, w: 1.3, h: 0.3,
+                        fontSize: 10, color: design.textColor, fontFace: design.fontFace, align: "right", transparency: 40
+                    });
                 });
             }
 
