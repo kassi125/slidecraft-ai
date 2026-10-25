@@ -166,6 +166,55 @@
                     <span id="statusText" class="font-medium text-slate-700"></span>
                 </div>
             </div>
+
+            <!-- Séparateur visuel -->
+            <div class="relative flex py-3 items-center">
+                <div class="flex-grow border-t border-slate-200"></div>
+                <span class="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase tracking-wider">Édition Directe & Personnalisation</span>
+                <div class="flex-grow border-t border-slate-200"></div>
+            </div>
+
+            <!-- Section Diapositives & Édition Directe -->
+            <div id="slidesEditorSection" class="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-5 gap-3">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <span>📑</span> Diapositives (Aperçu & Modification)
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-0.5">Modifiez les textes directement ou ajoutez vos propres diapositives à la main.</p>
+                    </div>
+                    <button onclick="addSlideManually()" class="px-3.5 py-2 bg-white hover:bg-brand-50 text-brand-700 border border-brand-200 rounded-lg text-sm font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Ajouter une diapositive
+                    </button>
+                </div>
+
+                <!-- Titre général de la présentation -->
+                <div class="mb-5 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Titre principal du PowerPoint</label>
+                    <input type="text" id="presentationTitleInput" value="Présentation Stratégique" placeholder="Titre général de votre présentation" class="w-full text-lg font-bold text-slate-800 bg-transparent border-0 border-b border-slate-200 focus:border-brand-500 focus:outline-none pb-1">
+                </div>
+
+                <!-- Liste dynamique des cartes de diapositives -->
+                <div id="slidesListContainer" class="space-y-4">
+                    <!-- Rendu dynamique -->
+                </div>
+
+                <!-- Boutons d'action sous la liste -->
+                <div class="mt-6 flex flex-col sm:flex-row gap-3">
+                    <button onclick="addSlideManually()" class="py-3 px-4 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-xl text-center border border-slate-300 transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer">
+                        <span>➕</span> Ajouter une diapositive
+                    </button>
+                    <button onclick="downloadCustomizedPPTX()" class="flex-1 py-3 px-6 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Télécharger le PowerPoint (.pptx)
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -242,7 +291,7 @@
             }
         }
 
-        // Charger le thème depuis l'URL au démarrage
+        // Charger le thème depuis l'URL au démarrage et initialiser l'éditeur de diapositives
         document.addEventListener('DOMContentLoaded', () => {
             const params = new URLSearchParams(window.location.search);
             if (params.has('t') && params.has('b') && params.has('x') && params.has('f')) {
@@ -260,7 +309,152 @@
             } else {
                 applyPreset(); // Thème Pro par défaut
             }
+
+            // Afficher les diapositives initiales
+            renderSlidesEditor();
         });
+
+        // Modèle de données pour les diapositives
+        let currentSlides = [
+            {
+                title: "Introduction & Enjeux Majeurs",
+                bullet_points: [
+                    "Cadrage stratégique : identification des objectifs clés et du contexte opérationnel.",
+                    "Analyse des opportunités : leviers de performance et facteurs déterminants de succès."
+                ]
+            },
+            {
+                title: "Plan d'Action & Déploiement",
+                bullet_points: [
+                    "Axe opérationnel : optimisation des processus et réduction des coûts de 15%.",
+                    "Gouvernance & Suivi : jalons calendaires stricts et tableaux de bord de pilotage."
+                ]
+            }
+        ];
+
+        function escapeHtml(text) {
+            return (text || '')
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Rendu des cartes de diapositives dans l'éditeur interactif
+        function renderSlidesEditor() {
+            const container = document.getElementById('slidesListContainer');
+            if (!container) return;
+
+            if (currentSlides.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8 px-4 bg-white rounded-xl border border-dashed border-slate-300 text-slate-500">
+                        <p class="font-medium text-sm">Aucune diapositive pour l'instant.</p>
+                        <p class="text-xs text-slate-400 mt-1">Cliquez sur "Ajouter une diapositive" pour commencer manuellement ou utilisez l'IA ci-dessus.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = currentSlides.map((slide, idx) => `
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm transition-all hover:border-slate-300">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-100">
+                            Diapositive #${idx + 1}
+                        </span>
+                        <button onclick="deleteSlide(${idx})" title="Supprimer cette diapositive" class="text-slate-400 hover:text-red-600 transition-colors p-1 cursor-pointer">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Titre de la diapositive</label>
+                            <input type="text" value="${escapeHtml(slide.title || '')}" oninput="updateSlideTitle(${idx}, this.value)" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="block text-xs font-medium text-slate-600">Points clés (Puces)</label>
+                                <span class="text-xs text-slate-400">1 ligne = 1 puce</span>
+                            </div>
+                            <textarea rows="3" oninput="updateSlideBullets(${idx}, this.value)" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent leading-relaxed">${escapeHtml((slide.bullet_points || []).join('\n'))}</textarea>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateSlideTitle(idx, val) {
+            if (currentSlides[idx]) {
+                currentSlides[idx].title = val;
+            }
+        }
+
+        function updateSlideBullets(idx, val) {
+            if (currentSlides[idx]) {
+                currentSlides[idx].bullet_points = val.split('\n').filter(line => line.trim().length > 0);
+            }
+        }
+
+        function addSlideManually() {
+            currentSlides.push({
+                title: `Nouvelle Diapositive ${currentSlides.length + 1}`,
+                bullet_points: [
+                    "Point clé à préciser...",
+                    "Deuxième élément ou résultat concret..."
+                ]
+            });
+            renderSlidesEditor();
+            
+            const container = document.getElementById('slidesListContainer');
+            if (container && container.lastElementChild) {
+                container.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        function deleteSlide(idx) {
+            if (currentSlides.length <= 1) {
+                if (!confirm("Voulez-vous supprimer la seule diapositive restante ?")) return;
+            }
+            currentSlides.splice(idx, 1);
+            renderSlidesEditor();
+        }
+
+        async function downloadCustomizedPPTX() {
+            if (currentSlides.length === 0) {
+                alert("Ajoutez au moins une diapositive avant de télécharger !");
+                return;
+            }
+
+            const designOptions = {
+                titleColor: document.getElementById('titleColor').value.replace('#', ''),
+                bgColor: document.getElementById('bgColor').value.replace('#', ''),
+                textColor: document.getElementById('textColor').value.replace('#', ''),
+                fontFace: document.getElementById('fontSelect').value
+            };
+
+            const presTitle = (document.getElementById('presentationTitleInput').value || "Présentation").trim();
+            const slidesData = {
+                presentation_title: presTitle,
+                slides: currentSlides
+            };
+
+            const statusArea = document.getElementById('statusArea');
+            statusArea.classList.remove('hidden');
+            updateStatus("🎨 Construction visuelle de la présentation PowerPoint...");
+
+            try {
+                const safeName = presTitle.replace(/[^a-zA-Z0-9_\-]/g, '_');
+                await createPPTX(slidesData, safeName, designOptions);
+                updateStatus("✅ Votre présentation a été téléchargée avec succès !");
+            } catch (e) {
+                console.error(e);
+                updateStatus("❌ Erreur : " + e.message);
+            }
+        }
 
         async function processDocument() {
             const fileInput = document.getElementById('fileInput');
@@ -270,7 +464,7 @@
             const btn = document.getElementById('generateBtn');
 
             if (fileInput.files.length === 0) {
-                alert("Veuillez sélectionner un document PDF ou Word.");
+                alert("Veuillez sélectionner un document PDF ou Word, ou utilisez l'éditeur ci-dessous.");
                 return;
             }
 
@@ -297,11 +491,20 @@
                 updateStatus("🔍 Analyse approfondie et structuration stratégique des diapositives...");
                 const slidesData = await generateSlidesWithAI(text, theme);
 
+                // Mettre à jour l'éditeur interactif avec les diapositives générées par l'IA
+                if (slidesData.presentation_title) {
+                    document.getElementById('presentationTitleInput').value = slidesData.presentation_title;
+                }
+                if (slidesData.slides && Array.isArray(slidesData.slides)) {
+                    currentSlides = slidesData.slides;
+                    renderSlidesEditor();
+                }
+
                 updateStatus("🎨 Construction visuelle de la présentation PowerPoint...");
                 await createPPTX(slidesData, file.name, designOptions);
 
                 spinner.classList.add('hidden');
-                updateStatus("✅ Terminé ! Votre présentation approfondie a été téléchargée.");
+                updateStatus("✅ Terminé ! Votre présentation a été téléchargée. Vous pouvez aussi la modifier directement ci-dessous.");
             } catch (error) {
                 console.error(error);
                 spinner.classList.add('hidden');
