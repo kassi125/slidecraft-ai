@@ -85,9 +85,40 @@
                     <span class="text-xl mr-2">🧠</span>
                     <h2 class="text-lg font-semibold text-slate-800">Intelligence Artificielle</h2>
                 </div>
-                <div class="p-6 bg-slate-50 rounded-xl border border-slate-200 transition-colors group-hover:border-brand-300">
-                    <label class="block text-sm font-medium text-slate-700 mb-2">Thème ou ligne directrice (Optionnel)</label>
-                    <input type="text" id="themeInput" autocomplete="off" spellcheck="false" placeholder="Ex : Ton formel, focus sur la finance, public cible : enfants..." class="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all placeholder-slate-400">
+                <div class="p-6 bg-slate-50 rounded-xl border border-slate-200 transition-colors group-hover:border-brand-300 space-y-5">
+                    <!-- Sélecteur de Profondeur : 3 IA vs 1 IA -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Architecture d'analyse IA</label>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <label class="relative flex items-center p-3.5 rounded-xl border-2 border-brand-500 bg-white cursor-pointer shadow-xs transition-all has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50/70">
+                                <input type="radio" name="analysisMode" value="master" checked class="text-brand-600 focus:ring-brand-500 h-4 w-4 mr-3">
+                                <div>
+                                    <span class="block text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                                        🏆 Mode Master Pro (3 IA en Chaîne)
+                                    </span>
+                                    <span class="block text-xs text-slate-500 mt-0.5 leading-snug">
+                                        Audit exhaustif + Storytelling Minto + Rédaction exécutive (~5s)
+                                    </span>
+                                </div>
+                            </label>
+                            <label class="relative flex items-center p-3.5 rounded-xl border-2 border-slate-200 bg-white hover:border-slate-300 cursor-pointer shadow-xs transition-all has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50/70">
+                                <input type="radio" name="analysisMode" value="express" class="text-brand-600 focus:ring-brand-500 h-4 w-4 mr-3">
+                                <div>
+                                    <span class="block text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                                        ⚡ Mode Express (1 IA)
+                                    </span>
+                                    <span class="block text-xs text-slate-500 mt-0.5 leading-snug">
+                                        Synthèse directe et rapide en 1 étape (~2s)
+                                    </span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Thème ou ligne directrice (Optionnel)</label>
+                        <input type="text" id="themeInput" autocomplete="off" spellcheck="false" placeholder="Ex : Ton formel, focus sur la finance, public cible : enfants..." class="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all placeholder-slate-400">
+                    </div>
                 </div>
             </div>
 
@@ -994,6 +1025,7 @@
 
             const file = fileInput.files[0];
             const theme = themeInput ? themeInput.value.trim() : "";
+            const mode = document.querySelector('input[name="analysisMode"]:checked')?.value || 'master';
             
             // Récupérer les options de design
             const designOptions = {
@@ -1008,12 +1040,29 @@
             btn.disabled = true;
             btn.classList.add('opacity-50', 'cursor-not-allowed', 'transform-none', 'hover:shadow-lg');
 
+            let stepInterval = null;
+
             try {
                 updateStatus("📄 Extraction du texte du document...");
                 const text = await extractTextFromFile(file);
 
-                updateStatus("🔍 Analyse approfondie et structuration stratégique des diapositives...");
-                const slidesData = await generateSlidesWithAI(text, theme);
+                if (mode === 'master') {
+                    updateStatus("Étape 1/3 : 🧠 IA 1 - Audit stratégique exhaustif et extraction des données clés...");
+                    let currentStep = 1;
+                    stepInterval = setInterval(() => {
+                        currentStep++;
+                        if (currentStep === 2) {
+                            updateStatus("Étape 2/3 : 📐 IA 2 - Structuration de la trame narrative persuasive (Pyramide Minto)...");
+                        } else if (currentStep === 3) {
+                            updateStatus("Étape 3/3 : ✍️ IA 3 - Rédaction exécutive et calibrage haute densité des diapositives...");
+                        }
+                    }, 2400);
+                } else {
+                    updateStatus("⚡ Mode Express : Analyse directe et structuration des diapositives...");
+                }
+
+                const slidesData = await generateSlidesWithAI(text, theme, mode);
+                if (stepInterval) clearInterval(stepInterval);
 
                 // Mettre à jour l'éditeur interactif avec les diapositives générées par l'IA
                 if (slidesData.presentation_title) {
@@ -1028,8 +1077,11 @@
                 await createPPTX(slidesData, file.name, designOptions);
 
                 spinner.classList.add('hidden');
-                updateStatus("✅ Terminé ! Votre présentation a été téléchargée. Vous pouvez aussi la modifier directement ci-dessous.");
+                updateStatus(mode === 'master' 
+                    ? "✅ Terminé ! Votre présentation Master Pro (3 IA) a été générée et téléchargée." 
+                    : "✅ Terminé ! Votre présentation a été téléchargée avec succès.");
             } catch (error) {
+                if (stepInterval) clearInterval(stepInterval);
                 console.error(error);
                 spinner.classList.add('hidden');
                 document.getElementById('statusText').innerHTML = `<span class="text-red-600">❌ Erreur : ${error.message}</span>`;
@@ -1065,11 +1117,11 @@
             }
         }
 
-        async function generateSlidesWithAI(text, theme) {
+        async function generateSlidesWithAI(text, theme, mode) {
             const response = await fetch('/api/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: text, theme: theme })
+                body: JSON.stringify({ text: text, theme: theme, mode: mode || 'master' })
             });
 
             if (!response.ok) {
