@@ -480,6 +480,15 @@
                             </div>
                             <textarea rows="3" autocomplete="off" spellcheck="false" oninput="updateSlideBullets(${idx}, this.value)" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent leading-relaxed">${escapeHtml((slide.bullet_points || []).join('\n'))}</textarea>
                         </div>
+
+                        ${slide.table && Array.isArray(slide.table.headers) ? `
+                            <div class="p-2.5 bg-brand-50/70 rounded-lg border border-brand-200 text-xs">
+                                <span class="font-bold text-brand-800 flex items-center gap-1 mb-1">📊 Tableau de données intégré :</span>
+                                <div class="text-slate-600 font-mono text-[11px] overflow-x-auto whitespace-nowrap bg-white p-1.5 rounded border border-slate-200">
+                                    ${escapeHtml(slide.table.headers.join(' | '))}
+                                </div>
+                            </div>
+                        ` : ''}
                     </div>
                 </div>
             `).join('');
@@ -745,8 +754,23 @@
                     result = await parsePPTXFile(file);
                 } else if (ext === 'docx') {
                     const arrayBuffer = await file.arrayBuffer();
-                    const mammothRes = await mammoth.extractRawText({ arrayBuffer });
-                    result = parseRawTextToSlides(mammothRes.value, file.name);
+                    const mammothRes = await mammoth.convertToHtml({ arrayBuffer });
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(mammothRes.value, 'text/html');
+                    const tables = doc.querySelectorAll('table');
+                    tables.forEach((table, index) => {
+                        let mdTable = `\n\n### Tableau de Données ${index + 1}\n`;
+                        const rows = table.querySelectorAll('tr');
+                        rows.forEach(row => {
+                            const cells = row.querySelectorAll('th, td');
+                            const cellTexts = Array.from(cells).map(c => c.textContent.trim().replace(/\s+/g, ' '));
+                            if (cellTexts.length > 0) mdTable += `- ` + cellTexts.join(' | ') + `\n`;
+                        });
+                        const p = doc.createElement('div');
+                        p.textContent = mdTable;
+                        table.replaceWith(p);
+                    });
+                    result = parseRawTextToSlides(doc.body.innerText || doc.body.textContent, file.name);
                 } else if (ext === 'txt') {
                     const text = await file.text();
                     result = parseRawTextToSlides(text, file.name);
@@ -1100,16 +1124,50 @@
             const arrayBuffer = await file.arrayBuffer();
 
             if (ext === 'docx') {
-                const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                return result.value;
+                // Utiliser convertToHtml pour préserver tous les tableaux, lignes et colonnes
+                const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(result.value, 'text/html');
+
+                // Transformer chaque balise <table> en grille textuelle explicite pour l'IA
+                const tables = doc.querySelectorAll('table');
+                tables.forEach((table, index) => {
+                    let mdTable = `\n\n=== [TABLEAU IDENTIFIÉ DANS LE DOCUMENT n°${index + 1}] ===\n`;
+                    const rows = table.querySelectorAll('tr');
+                    rows.forEach(row => {
+                        const cells = row.querySelectorAll('th, td');
+                        const cellTexts = Array.from(cells).map(c => c.textContent.trim().replace(/\s+/g, ' '));
+                        if (cellTexts.length > 0) {
+                            mdTable += `| ` + cellTexts.join(' | ') + ` |\n`;
+                        }
+                    });
+                    mdTable += `=== [FIN DU TABLEAU n°${index + 1}] ===\n\n`;
+                    const p = doc.createElement('div');
+                    p.textContent = mdTable;
+                    table.replaceWith(p);
+                });
+
+                return doc.body.innerText || doc.body.textContent;
             } else if (ext === 'pdf') {
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 let fullText = "";
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
-                    const pageText = textContent.items.map(item => item.str).join(" ");
-                    fullText += pageText + "\n";
+                    
+                    // Préservation intelligente des lignes et espacements de colonnes pour les tableaux PDF
+                    let lastY = null;
+                    let pageText = "";
+                    for (const item of textContent.items) {
+                        if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+                            pageText += "\n";
+                        } else if (lastY !== null) {
+                            pageText += "   |   ";
+                        }
+                        pageText += item.str;
+                        lastY = item.transform[5];
+                    }
+                    fullText += pageText + "\n\n";
                 }
                 return fullText;
             } else {
@@ -1159,14 +1217,93 @@
                     // Titre de la slide
                     slide.addText(slideInfo.title || "Détails", {
                         x: 0.8, y: 0.4, w: 8.5, h: 0.8,
-                        fontSize: 28, bold: true, color: design.titleColor, fontFace: design.fontFace
+                        fontSize: 26, bold: true, color: design.titleColor, fontFace: design.fontFace
                     });
                     
                     // Ligne de séparation subtile
                     slide.addShape(pptx.ShapeType.line, { x: 0.5, y: 1.25, w: 9, h: 0, line: { color: design.textColor, width: 1, dashType: "solid" }, transparency: 80 });
 
-                    // Puces avec taille adaptative pour le contenu approfondi
-                    if (slideInfo.bullet_points && Array.isArray(slideInfo.bullet_points)) {
+                    const hasTable = slideInfo.table && 
+                                     Array.isArray(slideInfo.table.headers) && 
+                                     slideInfo.table.headers.length > 0 && 
+                                     Array.isArray(slideInfo.table.rows) && 
+                                     slideInfo.table.rows.length > 0;
+
+                    const hasBullets = slideInfo.bullet_points && Array.isArray(slideInfo.bullet_points) && slideInfo.bullet_points.length > 0;
+
+                    // CAS 1 : Diapositive avec TABLEAU intégré (issu du document d'origine)
+                    if (hasTable) {
+                        // S'il y a des puces d'analyse en chapeau
+                        if (hasBullets) {
+                            const bulletItems = slideInfo.bullet_points.slice(0, 2).map(point => ({
+                                text: point,
+                                options: { bullet: { type: 'number' }, fontSize: 13, color: design.textColor, breakLine: true, fontFace: design.fontFace }
+                            }));
+                            slide.addText(bulletItems, {
+                                x: 0.5, y: 1.35, w: 9, h: 0.95,
+                                valign: "top",
+                                lineSpacing: 18
+                            });
+                        }
+
+                        // Construction du tableau PowerPoint natif PptxGenJS
+                        const pptxRows = [];
+
+                        // 1. Ligne d'en-tête (fond coloré avec texte blanc gras centré)
+                        const headerRow = slideInfo.table.headers.map(h => ({
+                            text: String(h || ""),
+                            options: {
+                                bold: true,
+                                color: "FFFFFF",
+                                fill: { color: design.titleColor },
+                                align: "center",
+                                valign: "middle",
+                                fontSize: 11,
+                                fontFace: design.fontFace
+                            }
+                        }));
+                        pptxRows.push(headerRow);
+
+                        // 2. Lignes de données (zébrées avec mise en avant des chiffres et pourcentages)
+                        slideInfo.table.rows.forEach((row, rIdx) => {
+                            if (!Array.isArray(row)) return;
+                            const isEven = rIdx % 2 === 0;
+                            const bgZebra = isEven ? "FFFFFF" : "F1F5F9";
+
+                            const dataRow = row.map((cell, cIdx) => {
+                                const cellStr = String(cell !== undefined && cell !== null ? cell : "");
+                                // Mettre en valeur les chiffres, pourcentages et devises
+                                const isMetric = /[0-9%€$]/.test(cellStr) && cIdx > 0;
+                                return {
+                                    text: cellStr,
+                                    options: {
+                                        color: isMetric ? design.titleColor : design.textColor,
+                                        bold: isMetric,
+                                        fill: { color: bgZebra },
+                                        align: isMetric ? "center" : "left",
+                                        valign: "middle",
+                                        fontSize: 10,
+                                        fontFace: design.fontFace
+                                    }
+                                };
+                            });
+                            pptxRows.push(dataRow);
+                        });
+
+                        const tableY = hasBullets ? 2.4 : 1.45;
+                        const tableH = hasBullets ? 2.7 : 3.6;
+
+                        slide.addTable(pptxRows, {
+                            x: 0.5,
+                            y: tableY,
+                            w: 9.0,
+                            h: tableH,
+                            border: { pt: 0.5, color: "CBD5E1" },
+                            autoPage: false
+                        });
+                    } 
+                    // CAS 2 : Diapositive standard avec puces textuelles approfondies
+                    else if (hasBullets) {
                         const count = slideInfo.bullet_points.length;
                         const fontSize = count > 4 ? 13 : (count > 3 ? 14 : 16);
                         const spacing = count > 4 ? 18 : (count > 3 ? 22 : 26);

@@ -220,18 +220,22 @@ app.post('/api/generate', async (req, res) => {
             // =========================================================================
             console.log("Démarrage du Pipeline Master Pro (Priorité absolue à la profondeur d'analyse)...");
 
-            // --- IA 1 : L'AUDITEUR ANALYTIQUE SENIOR (Diagnostic chirurgical & extraction exhaustive) ---
+            // --- IA 1 : L'AUDITEUR ANALYTIQUE SENIOR (Diagnostic chirurgical, capture des tableaux & chiffres) ---
             const promptIA1 = `Tu es un Auditeur Stratégique et Diagnosticien Senior de classe mondiale (standards McKinsey, BCG, Bain).
-Ta mission est d'analyser EXHAUSTIVEMENT, EN PROFONDEUR et SANS RIEN ÉLAGUER le document fourni. La rapidité n'a aucune importance, seule compte la rigueur analytique maximale et la profondeur.
+Ta mission est d'analyser EXHAUSTIVEMENT, EN PROFONDEUR et SANS RIEN ÉLAGUER le document fourni (Word, PDF, PPTX, texte). La rapidité n'a aucune importance, seule compte la rigueur analytique maximale et la profondeur.
+
+EXIGENCES ABSOLUES SUR LES TABLEAUX ET LES CHIFFRES :
+- Détecte, isole et retranscris INTÉGRALEMENT tous les TABLEAUX et grilles de données chiffrées présents dans le document. Ne résume JAMAIS un tableau : conserve tous ses en-têtes de colonnes, toutes ses lignes et toutes ses valeurs chiffrées exactes.
+- Extrais l'intégralité des données dures (Hard Facts) : 100% des chiffres, métriques, pourcentages (%), montants monétaires (€, $), volumes, dates clés et ratios.
 
 Produis un diagnostic stratégique chirurgical et exhaustif structuré ainsi :
-1. Thèse centrale, macro-environnement, contexte institutionnel/économique et problématiques de fond.
-2. Extraction intégrale des données dures (Hard Facts) : TOUS les chiffres, métriques clés, pourcentages, ratios, budgets, volumes, dates charnières, échéances et jalons mentionnés. Ne laisse échapper AUCUN chiffre.
-3. Diagnostic des causes profondes (Root Cause Analysis - 5 Pourquoi) : freins structurels, blocages organisationnels ou techniques, défaillances identifiées.
-4. Opportunités stratégiques, synergies et leviers de création de valeur évoqués dans le texte.
-5. Cartographie des risques majeurs, impacts qualifiés et chiffrés, recommandations prioritaires.
+1. Thèse centrale, macro-environnement et problématiques de fond.
+2. Restitution exhaustive de TOUS LES TABLEAUX de données identifiés dans le document (avec colonnes et lignes précises).
+3. Synthèse de tous les chiffres clés et métriques de performance.
+4. Diagnostic des causes profondes (Root Cause Analysis - 5 Pourquoi) et freins identifiés.
+5. Opportunités stratégiques, leviers de création de valeur et matrice des risques majeurs.
 
-Sois ultra-dense, factuel, fouillé, hautement analytique et sans la moindre approximation. Conserve la langue originale du document.`;
+Sois ultra-dense, factuel, fouillé et sans la moindre approximation. Conserve la langue originale du document.`;
 
             const resIA1 = await callGroqWithFallback(groq, modelsToTry, [
                 { role: "system", content: promptIA1 },
@@ -241,7 +245,7 @@ Sois ultra-dense, factuel, fouillé, hautement analytique et sans la moindre app
             const auditSummary = resIA1.text;
             console.log("IA 1 (Audit en profondeur) terminée avec succès via", resIA1.model);
 
-            // --- IA 2 : L'ARCHITECTE NARRATIF (Storytelling & Pyramide de Minto) ---
+            // --- IA 2 : L'ARCHITECTE NARRATIF (Storytelling, Pyramide de Minto & Valorisation des tableaux) ---
             const promptIA2 = `Tu es le Directeur de la Stratégie d'une grande organisation et maître du storytelling exécutif.
 À partir du document original et du diagnostic analytique ultra-détaillé de l'IA 1, construis la TRAME NARRATIVE (Storyline) d'une présentation de niveau Conseil d'Administration / Comité Exécutif.
 
@@ -252,10 +256,11 @@ Règles fondamentales :
   * Question centrale / Enjeu critique
   * Résolution stratégique découpée en piliers d'actions concrets et mesurables
   * Calendrier, gouvernance, gestion des risques et perspectives
+- VALORISATION DES TABLEAUX ET DES CHIFFRES : Si le document original ou l'audit de l'IA 1 contient un ou plusieurs tableaux de données (bilan financier, KPIs, plannings, comparatifs...), tu DOIS obligatoirement dédier une ou plusieurs diapositives spécifiquement pour afficher et analyser ces tableaux !
 - Découpe la présentation en 6 à 10 diapositives logiques et indissociables.
 - Pour chaque diapositive :
   * Définis un TITRE DE THÈSE fort et explicite (ex: 'Érosion de 18% des marges due à l'inflation des coûts logistiques' et NON un titre creux comme 'Coûts logistiques').
-  * Détaille le rôle narratif et les messages directeurs indispensables à y démontrer.${themeInstruction}
+  * Indique clairement si cette slide doit contenir un TABLEAU extrait du document et spécifie ses données.${themeInstruction}
 
 Conserve la langue originale du document.`;
 
@@ -267,18 +272,21 @@ Conserve la langue originale du document.`;
             const storyline = resIA2.text;
             console.log("IA 2 (Trame narrative stratégique) terminée avec succès via", resIA2.model);
 
-            // --- IA 3 : LE RÉDACTEUR EXÉCUTIF (Formulation d'impact & Sortie JSON) ---
+            // --- IA 3 : LE RÉDACTEUR EXÉCUTIF (Formulation d'impact, Restitution des tableaux & JSON) ---
             const promptIA3 = `Tu es l'Expert Ultime en Rédaction de Présentations pour Dirigeants et Comités Stratégiques.
 À partir du diagnostic fouillé (IA 1) et de la trame narrative persuasive (IA 2), rédige l'intégralité des diapositives au format JSON strict.
 
-EXIGENCES ABSOLUES DE RÉDACTION EN PROFONDEUR :
-1. Titre de présentation : hautement engageant, précis, stratégique.
-2. Titres de chaque diapositive : formuler une VRAIE phrase affirmée et percutante (Thèse explicite avec métrique ou impact clair).
-3. Puces (Bullet points) : 3 à 5 puces denses et substantielles par diapositive.
-   INTERDICTION FORMELLE des puces courtes ou génériques.
-   Chaque puce doit être rédigée avec profondeur selon la règle d'or :
-   'Idée maîtresse en gras/clé : explication fouillée du contexte et de la causalité, chiffre précis ou fait marquant extrait du document, et impact opérationnel ou stratégique mesurable'.
-4. Intégrer systématiquement les données quantitatives et chiffrées de l'audit de l'IA 1.
+EXIGENCES ABSOLUES DE RÉDACTION ET RESTITUTION DES TABLEAUX :
+1. RESTITUTION VISUELLE DES TABLEAUX :
+   - Pour chaque diapositive qui présente des données tabulaires du document, inclus OBLIGATOIREMENT l'objet "table" avec "headers" (tableau des noms de colonnes) et "rows" (tableau des lignes contenant les valeurs).
+   - Conserve fidèlement chaque valeur, chiffre, pourcentage et intitulé du tableau d'origine.
+   - S'il n'y a pas de tableau pour une diapositive conceptuelle, mets "table": null.
+2. MISE EN AVANT DES CHIFFRES DANS LES PUCES :
+   - Dans TOUTES les puces, mets systématiquement en valeur les chiffres clés, métriques, dates et pourcentages.
+   - Règle d'or de rédaction pour chaque puce :
+     'Idée maîtresse en gras/clé : explication fouillée du contexte et de la causalité, chiffre précis ou fait marquant extrait du document, et impact opérationnel ou stratégique mesurable'.
+3. Titre de présentation : hautement engageant, précis, stratégique.
+4. Titres de chaque diapositive : formuler une VRAIE phrase affirmée et percutante (Thèse explicite avec métrique ou impact clair).
 5. Conserver la langue originale du document.${themeInstruction}
 
 FORMAT STRICT DU RÉSULTAT (JSON pur, sans bloc markdown, sans texte hors JSON) :
@@ -288,10 +296,24 @@ FORMAT STRICT DU RÉSULTAT (JSON pur, sans bloc markdown, sans texte hors JSON) 
         {
             "title": "Titre de thèse affirmé et informatif de la diapositive",
             "bullet_points": [
-                "Idée force 1 : explication détaillée du contexte, chiffre ou métrique clé extraite, impact stratégique concret.",
-                "Idée force 2 : explication détaillée du contexte, chiffre ou métrique clé extraite, impact stratégique concret.",
-                "Idée force 3 : explication détaillée du contexte, chiffre ou métrique clé extraite, impact stratégique concret."
-            ]
+                "Idée force 1 : explication détaillée avec chiffre marquant (+25%) et impact concret.",
+                "Idée force 2 : explication détaillée avec donnée chiffrée et recommandation opérationnelle."
+            ],
+            "table": null
+        },
+        {
+            "title": "Bilan Financier et Comparatif d'Activité (Tableau Récapitulatif)",
+            "bullet_points": [
+                "Analyse clé : croissance globale supérieure aux prévisions grâce à la dynamique digitale."
+            ],
+            "table": {
+                "headers": ["Indicateur", "2024", "2025", "Variation"],
+                "rows": [
+                    ["Chiffre d'affaires", "1.2 M€", "1.5 M€", "+25%"],
+                    ["Marge brute", "38%", "42%", "+4 pts"],
+                    ["Trésorerie nette", "320 k€", "510 k€", "+59%"]
+                ]
+            }
         }
     ]
 }`;
@@ -312,13 +334,28 @@ FORMAT STRICT DU RÉSULTAT (JSON pur, sans bloc markdown, sans texte hors JSON) 
             const singlePrompt = `Tu es un expert en création de présentations professionnelles et exécutives.
 Lis le texte fourni et extrais les informations les plus importantes pour créer une présentation PowerPoint claire, concise et étayée de chiffres.${themeInstruction}
 
+CONSIGNE TABLEAUX ET CHIFFRES :
+Si le texte contient des tableaux de données ou des comparaisons chiffrées, conserve-les et reproduis-les fidèlement via l'objet "table" (avec "headers" et "rows").
+Dans les puces, mets toujours en avant les chiffres, pourcentages et résultats concrets.
+
 Tu dois STRICTEMENT renvoyer un objet JSON valide avec cette structure exacte :
 {
     "presentation_title": "Titre principal",
     "slides": [
         {
             "title": "Titre informatif de la diapositive",
-            "bullet_points": ["Point clé 1 approfondi", "Point clé 2 approfondi"]
+            "bullet_points": ["Point clé approfondi avec chiffres"],
+            "table": null
+        },
+        {
+            "title": "Tableau Récapitulatif des Chiffres Clés",
+            "bullet_points": ["Analyse synthétique du tableau ci-dessous"],
+            "table": {
+                "headers": ["Colonne 1", "Colonne 2", "Colonne 3"],
+                "rows": [
+                    ["Valeur A", "100 k€", "+15%"]
+                ]
+            }
         }
     ]
 }`;
