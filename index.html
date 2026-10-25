@@ -37,6 +37,9 @@
     <!-- Mammoth.js pour lire les DOCX -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
     
+    <!-- JSZip pour lire et décompresser les fichiers PowerPoint (.pptx) existants -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
     <!-- PptxGenJS pour créer le PowerPoint -->
     <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 
@@ -170,8 +173,30 @@
             <!-- Séparateur visuel -->
             <div class="relative flex py-3 items-center">
                 <div class="flex-grow border-t border-slate-200"></div>
-                <span class="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase tracking-wider">Édition Directe & Personnalisation</span>
+                <span class="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase tracking-wider">OU CHARGER UN FICHIER DÉJÀ PRÊT</span>
                 <div class="flex-grow border-t border-slate-200"></div>
+            </div>
+
+            <!-- Option directe : Charger un PowerPoint existant (.pptx) sans IA -->
+            <div class="p-6 bg-gradient-to-r from-indigo-50/80 to-purple-50/80 rounded-2xl border-2 border-dashed border-indigo-200 hover:border-indigo-400 transition-colors shadow-sm">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div class="flex items-center gap-3.5">
+                        <div class="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-2xl shadow-md flex-shrink-0">
+                            📂
+                        </div>
+                        <div>
+                            <h3 class="text-base font-bold text-slate-800">Modifier un PowerPoint (.pptx) déjà prêt</h3>
+                            <p class="text-xs text-slate-600 mt-0.5">Ouvrez directement votre fichier PowerPoint existant pour modifier ses textes et lui appliquer un nouveau thème sans passer par l'IA.</p>
+                        </div>
+                    </div>
+                    <label class="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer flex-shrink-0 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        Ouvrir mon .pptx
+                        <input type="file" accept=".pptx,.docx,.txt" onchange="loadExistingFile(event)" class="hidden">
+                    </label>
+                </div>
             </div>
 
             <!-- Section Diapositives & Édition Directe -->
@@ -184,6 +209,13 @@
                         <p class="text-xs text-slate-500 mt-0.5">Modifiez vos textes directement ou chargez une présentation toute faite.</p>
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
+                        <label class="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                            </svg>
+                            Ouvrir .pptx
+                            <input type="file" accept=".pptx,.docx,.txt" onchange="loadExistingFile(event)" class="hidden">
+                        </label>
                         <button onclick="toggleImportModal(true)" class="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -459,8 +491,110 @@
                 return;
             }
 
-            const lines = raw.split('\n');
-            let presentationTitle = "";
+            const parsed = parseRawTextToSlides(raw, "");
+            if (!parsed.slides || parsed.slides.length === 0) {
+                alert("Impossible d'extraire des diapositives. Veillez à inclure des titres et des puces.");
+                return;
+            }
+
+            if (parsed.presentation_title) {
+                document.getElementById('presentationTitleInput').value = parsed.presentation_title;
+            }
+            currentSlides = parsed.slides;
+            renderSlidesEditor();
+            toggleImportModal(false);
+            document.getElementById('importTextarea').value = "";
+
+            updateStatus(`✅ Présentation importée avec succès (${currentSlides.length} diapositives) !`);
+            document.getElementById('statusArea').classList.remove('hidden');
+            document.getElementById('slidesEditorSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Fonction utilitaire pour trouver des éléments XML sans se soucier du préfixe d'espace de noms
+        function getXmlElementsByLocal(parent, localName) {
+            const list = parent.getElementsByTagName("*");
+            const matched = [];
+            for (let i = 0; i < list.length; i++) {
+                if (list[i].localName === localName) {
+                    matched.push(list[i]);
+                }
+            }
+            return matched;
+        }
+
+        // Parseur complet et robuste de fichiers PowerPoint (.pptx)
+        async function parsePPTXFile(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const zip = await JSZip.loadAsync(arrayBuffer);
+            
+            // Trouver tous les fichiers slideX.xml
+            const slideKeys = Object.keys(zip.files).filter(k => /^ppt\/slides\/slide\d+\.xml$/.test(k));
+            
+            if (slideKeys.length === 0) {
+                throw new Error("Aucune diapositive trouvée dans ce fichier PowerPoint (.pptx).");
+            }
+
+            // Trier les diapositives par ordre numérique (slide1, slide2, slide3...)
+            slideKeys.sort((a, b) => {
+                const numA = parseInt(a.match(/slide(\d+)\.xml/)[1], 10);
+                const numB = parseInt(b.match(/slide(\d+)\.xml/)[1], 10);
+                return numA - numB;
+            });
+
+            const parser = new DOMParser();
+            const extractedSlides = [];
+            let presTitle = file.name.replace(/\.[^/.]+$/, "");
+
+            for (let i = 0; i < slideKeys.length; i++) {
+                const xmlText = await zip.files[slideKeys[i]].async("text");
+                const doc = parser.parseFromString(xmlText, "application/xml");
+
+                const shapes = getXmlElementsByLocal(doc, "sp");
+                let foundTitle = "";
+                const slideBullets = [];
+
+                shapes.forEach((sp, shapeIndex) => {
+                    const phList = getXmlElementsByLocal(sp, "ph");
+                    const phType = phList.length > 0 ? (phList[0].getAttribute("type") || "") : "";
+                    const isTitlePlaceholder = phType === "title" || phType === "ctrTitle";
+
+                    const paragraphs = getXmlElementsByLocal(sp, "p");
+                    paragraphs.forEach((p, pIndex) => {
+                        const textRuns = getXmlElementsByLocal(p, "t");
+                        const fullParaText = textRuns.map(t => t.textContent).join("").trim();
+                        if (!fullParaText) return;
+
+                        if (isTitlePlaceholder && !foundTitle) {
+                            foundTitle = fullParaText;
+                        } else if (!foundTitle && shapeIndex === 0 && pIndex === 0) {
+                            foundTitle = fullParaText;
+                        } else {
+                            slideBullets.push(fullParaText);
+                        }
+                    });
+                });
+
+                // Si la première diapositive est une couverture (titre seul sans puces)
+                if (i === 0 && foundTitle && slideBullets.length === 0) {
+                    presTitle = foundTitle;
+                } else {
+                    extractedSlides.push({
+                        title: foundTitle || `Diapositive ${extractedSlides.length + 1}`,
+                        bullet_points: slideBullets.length > 0 ? slideBullets : ["Point clé de la présentation..."]
+                    });
+                }
+            }
+
+            return {
+                presentation_title: presTitle,
+                slides: extractedSlides.length > 0 ? extractedSlides : [{ title: presTitle, bullet_points: ["Contenu extrait..."] }]
+            };
+        }
+
+        // Parseur universel de texte brut (pour fichiers Word .docx ou texte .txt)
+        function parseRawTextToSlides(raw, defaultTitle) {
+            const lines = (raw || '').split('\n');
+            let presentationTitle = defaultTitle ? defaultTitle.replace(/\.[^/.]+$/, "") : "";
             const parsedSlides = [];
             let currentSlide = null;
 
@@ -468,21 +602,17 @@
                 const trimmed = line.trim();
                 if (!trimmed) return;
 
-                // Titre principal éventuel
                 if (!presentationTitle && (trimmed.startsWith('# ') || trimmed.toLowerCase().startsWith('titre :') || trimmed.toLowerCase().startsWith('titre:'))) {
                     presentationTitle = trimmed.replace(/^#\s*/, '').replace(/^titre\s*:\s*/i, '').trim();
                     return;
                 }
 
-                // Détection de titre de diapositive (Markdown ##, ###, ou Slide 1, Diapo 1, Partie 1...)
                 const isHeading = trimmed.startsWith('## ') || 
                                   trimmed.startsWith('### ') || 
                                   /^(slide|diapo|diapositive|partie|axe|chapitre)\s*\d*\s*[:\-]/i.test(trimmed);
 
                 if (isHeading) {
-                    if (currentSlide) {
-                        parsedSlides.push(currentSlide);
-                    }
+                    if (currentSlide) parsedSlides.push(currentSlide);
                     let sTitle = trimmed
                         .replace(/^#+\s*/, '')
                         .replace(/^(slide|diapo|diapositive|partie|axe|chapitre)\s*\d*\s*[:\-]\s*/i, '')
@@ -493,54 +623,70 @@
                         bullet_points: []
                     };
                 } else if (trimmed.startsWith('-') || trimmed.startsWith('*') || trimmed.startsWith('•') || /^\d+[\.\)]\s/.test(trimmed)) {
-                    // Puce détectée
-                    const cleanBullet = trimmed
-                        .replace(/^[\-\*\•]\s*/, '')
-                        .replace(/^\d+[\.\)]\s*/, '')
-                        .trim();
-
-                    if (!currentSlide) {
-                        currentSlide = {
-                            title: "Introduction",
-                            bullet_points: []
-                        };
-                    }
-                    currentSlide.bullet_points.push(cleanBullet);
+                    const clean = trimmed.replace(/^[\-\*\•]\s*/, '').replace(/^\d+[\.\)]\s*/, '').trim();
+                    if (!currentSlide) currentSlide = { title: "Introduction", bullet_points: [] };
+                    currentSlide.bullet_points.push(clean);
                 } else {
-                    // Ligne de texte libre
-                    if (!presentationTitle && parsedSlides.length === 0 && !currentSlide) {
-                        presentationTitle = trimmed;
-                    } else if (!currentSlide) {
-                        currentSlide = {
-                            title: trimmed,
-                            bullet_points: []
-                        };
+                    if (!currentSlide) {
+                        currentSlide = { title: trimmed, bullet_points: [] };
                     } else {
                         currentSlide.bullet_points.push(trimmed);
                     }
                 }
             });
 
-            if (currentSlide) {
-                parsedSlides.push(currentSlide);
-            }
+            if (currentSlide) parsedSlides.push(currentSlide);
 
-            if (parsedSlides.length === 0) {
-                alert("Impossible d'extraire des diapositives. Veillez à inclure des titres et des puces.");
-                return;
-            }
+            return {
+                presentation_title: presentationTitle || "Présentation",
+                slides: parsedSlides.length > 0 ? parsedSlides : [{ title: "Diapositive", bullet_points: ["Contenu de la présentation..."] }]
+            };
+        }
 
-            if (presentationTitle) {
-                document.getElementById('presentationTitleInput').value = presentationTitle;
-            }
-            currentSlides = parsedSlides;
-            renderSlidesEditor();
-            toggleImportModal(false);
-            document.getElementById('importTextarea').value = "";
+        // Ouvrir directement un fichier existant (.pptx, .docx, .txt) sans passer par l'IA
+        async function loadExistingFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
 
-            updateStatus(`✅ Présentation importée avec succès (${currentSlides.length} diapositives) !`);
-            document.getElementById('statusArea').classList.remove('hidden');
-            document.getElementById('slidesEditorSection').scrollIntoView({ behavior: 'smooth' });
+            const ext = file.name.split('.').pop().toLowerCase();
+            const statusArea = document.getElementById('statusArea');
+            statusArea.classList.remove('hidden');
+            updateStatus(`📂 Ouverture et lecture de "${file.name}" en cours...`);
+
+            try {
+                let result = null;
+
+                if (ext === 'pptx') {
+                    result = await parsePPTXFile(file);
+                } else if (ext === 'docx') {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const mammothRes = await mammoth.extractRawText({ arrayBuffer });
+                    result = parseRawTextToSlides(mammothRes.value, file.name);
+                } else if (ext === 'txt') {
+                    const text = await file.text();
+                    result = parseRawTextToSlides(text, file.name);
+                } else {
+                    throw new Error("Format non pris en charge. Veuillez choisir un fichier PowerPoint (.pptx), Word (.docx) ou Texte (.txt).");
+                }
+
+                if (result && result.slides && result.slides.length > 0) {
+                    document.getElementById('presentationTitleInput').value = result.presentation_title || file.name.replace(/\.[^/.]+$/, "");
+                    currentSlides = result.slides;
+                    renderSlidesEditor();
+
+                    updateStatus(`✅ ${result.slides.length} diapositives importées depuis "${file.name}" ! Vous pouvez maintenant modifier le texte et le thème ci-dessous.`);
+                    
+                    // Faire défiler jusqu'à la section d'édition
+                    document.getElementById('slidesEditorSection').scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    throw new Error("Aucune diapositive n'a pu être extraite de ce fichier.");
+                }
+            } catch (err) {
+                console.error(err);
+                updateStatus(`❌ Erreur lors du chargement : ${err.message}`);
+            } finally {
+                event.target.value = '';
+            }
         }
 
         // Modèles de présentations prêtes à l'emploi
