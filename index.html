@@ -97,7 +97,7 @@
                                         🏆 Mode Master Pro (3 IA en Chaîne)
                                     </span>
                                     <span class="block text-xs text-slate-500 mt-0.5 leading-snug">
-                                        Audit exhaustif + Storytelling Minto + Rédaction exécutive (~5s)
+                                        Audit chirurgical exhaustif + Storytelling Minto + Rédaction haute densité (Rigueur maximale)
                                     </span>
                                 </div>
                             </label>
@@ -1168,8 +1168,8 @@
                     // Puces avec taille adaptative pour le contenu approfondi
                     if (slideInfo.bullet_points && Array.isArray(slideInfo.bullet_points)) {
                         const count = slideInfo.bullet_points.length;
-                        const fontSize = count > 4 ? 15 : (count > 3 ? 16 : 18);
-                        const spacing = count > 4 ? 22 : 28;
+                        const fontSize = count > 4 ? 13 : (count > 3 ? 14 : 16);
+                        const spacing = count > 4 ? 18 : (count > 3 ? 22 : 26);
 
                         let bulletItems = slideInfo.bullet_points.map(point => ({
                             text: point,
@@ -1177,7 +1177,7 @@
                         }));
                         
                         slide.addText(bulletItems, {
-                            x: 0.5, y: 1.45, w: 9, h: 3.7,
+                            x: 0.5, y: 1.45, w: 9, h: 3.8,
                             valign: "top",
                             lineSpacing: spacing
                         });

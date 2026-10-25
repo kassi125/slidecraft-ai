@@ -26,6 +26,26 @@ app.use(express.json({ limit: '50mb' }));
 // Servir les fichiers statiques (index.html, etc.) depuis le dossier racine
 app.use(express.static(__dirname));
 
+// Score d'intelligence et de profondeur d'analyse (priorité absolue aux modèles de raisonnement 70B/120B/DeepSeek)
+function getModelIntelligenceScore(modelId) {
+    const id = (modelId || "").toLowerCase();
+    // Priorité 1 : Modèles de raisonnement lourd (DeepSeek R1, chain-of-thought)
+    if (id.includes('deepseek-r1') || id.includes('r1-distill')) return 100;
+    // Priorité 2 : Modèles géants (120B)
+    if (id.includes('120b')) return 95;
+    // Priorité 3 : Grands modèles de pointe (70B)
+    if (id.includes('70b')) return 90;
+    // Priorité 4 : Modèles intermédiaires puissants (32B, 27B)
+    if (id.includes('32b')) return 80;
+    if (id.includes('27b') || id.includes('qwen')) return 75;
+    if (id.includes('20b')) return 70;
+    // Priorité 5 : Modèles compacts (9B)
+    if (id.includes('gemma') || id.includes('9b')) return 60;
+    // Priorité 6 : Modèles rapides / légers (8B) - en tout dernier recours uniquement
+    if (id.includes('8b')) return 50;
+    return 40;
+}
+
 // Récupérer le client Groq
 function getGroqClient() {
     const apiKey = (process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || "").trim();
@@ -43,21 +63,24 @@ async function callGroqWithFallback(groq, modelsToTry, messages, options = {}) {
 
     for (const currentModel of modelsToTry) {
         try {
+            console.log(`[Groq Pipeline] Appel du modèle de réflexion : ${currentModel}`);
             let completion;
+            const reqPayload = {
+                model: currentModel,
+                messages: messages,
+                temperature: options.temperature !== undefined ? options.temperature : 0.2,
+                max_tokens: options.max_tokens || 4096,
+                ...(options.jsonMode ? { response_format: { type: "json_object" } } : {})
+            };
+
             try {
-                completion = await groq.chat.completions.create({
-                    model: currentModel,
-                    messages: messages,
-                    temperature: options.temperature !== undefined ? options.temperature : 0.3,
-                    ...(options.jsonMode ? { response_format: { type: "json_object" } } : {})
-                });
+                completion = await groq.chat.completions.create(reqPayload);
             } catch (errJson) {
-                if (options.jsonMode && errJson.message && errJson.message.includes('response_format')) {
-                    completion = await groq.chat.completions.create({
-                        model: currentModel,
-                        messages: messages,
-                        temperature: options.temperature !== undefined ? options.temperature : 0.3
-                    });
+                // Certains modèles ne supportent pas le paramètre response_format ou max_tokens trop élevé
+                if (errJson.message && (errJson.message.includes('response_format') || errJson.message.includes('max_tokens'))) {
+                    delete reqPayload.response_format;
+                    if (errJson.message.includes('max_tokens')) delete reqPayload.max_tokens;
+                    completion = await groq.chat.completions.create(reqPayload);
                 } else {
                     throw errJson;
                 }
@@ -153,17 +176,36 @@ app.post('/api/generate', async (req, res) => {
             }
         }
 
+        if (discoveredModels.length > 0) {
+            // Trier immédiatement les modèles découverts du plus intelligent au plus léger
+            discoveredModels.sort((a, b) => getModelIntelligenceScore(b) - getModelIntelligenceScore(a));
+        }
+
         const customModel = (process.env.GROQ_MODEL || "").trim();
+        const priorityHeavyModels = [
+            "deepseek-r1-distill-llama-70b",
+            "openai/gpt-oss-120b",
+            "llama-3.3-70b-versatile",
+            "llama-3.1-70b-versatile",
+            "qwen/qwen3.8-27b",
+            "openai/gpt-oss-20b"
+        ];
+
         const candidates = [
             customModel,
             ...discoveredModels,
-            "openai/gpt-oss-120b",
-            "openai/gpt-oss-20b",
-            "qwen/qwen3.8-27b",
-            "gemma2-9b-it"
+            ...priorityHeavyModels,
+            "gemma2-9b-it",
+            "llama-3.1-8b-instant"
         ].filter(Boolean);
 
         const modelsToTry = [...new Set(candidates)];
+        modelsToTry.sort((a, b) => {
+            if (customModel && a === customModel) return -1;
+            if (customModel && b === customModel) return 1;
+            return getModelIntelligenceScore(b) - getModelIntelligenceScore(a);
+        });
+
         if (modelsToTry.length === 0) {
             return res.status(500).json({ 
                 error: "Aucun modèle de chat actif n'a été trouvé sur votre compte Groq." 
@@ -174,71 +216,81 @@ app.post('/api/generate', async (req, res) => {
 
         if (mode === "master") {
             // =========================================================================
-            // PIPELINE CONSEIL STRATÉGIQUE (3 IA EN CHAÎNE)
+            // PIPELINE CONSEIL STRATÉGIQUE (3 IA EN CHAÎNE - ANALYSE PROFONDE MAXIMALE)
             // =========================================================================
-            console.log("Démarrage du Pipeline Master Pro (3 IA en chaîne)...");
+            console.log("Démarrage du Pipeline Master Pro (Priorité absolue à la profondeur d'analyse)...");
 
-            // --- IA 1 : L'AUDITEUR ANALYTIQUE (Extraction exhaustive & faits durs) ---
-            const promptIA1 = `Tu es un Auditeur Stratégique Senior de classe mondiale (standards McKinsey, BCG).
-Ta mission est d'analyser EXHAUSTIVEMENT et SANS RIEN ÉLAGUER le document fourni.
-Produis un diagnostic analytique complet et structuré :
-1. Thèse centrale, contexte global et problématiques prioritaires.
-2. Toutes les données quantitatives et concrètes : chiffres clés, pourcentages, métriques, dates, jalons, budgets, volumes.
-3. Causes profondes et freins identifiés.
-4. Opportunités stratégiques, leviers de performance et solutions évoquées.
-5. Risques majeurs, impacts et recommandations clés.
-Sois dense, factuel, ultra-précis et exhaustif. Conserve la langue originale du document.`;
+            // --- IA 1 : L'AUDITEUR ANALYTIQUE SENIOR (Diagnostic chirurgical & extraction exhaustive) ---
+            const promptIA1 = `Tu es un Auditeur Stratégique et Diagnosticien Senior de classe mondiale (standards McKinsey, BCG, Bain).
+Ta mission est d'analyser EXHAUSTIVEMENT, EN PROFONDEUR et SANS RIEN ÉLAGUER le document fourni. La rapidité n'a aucune importance, seule compte la rigueur analytique maximale et la profondeur.
+
+Produis un diagnostic stratégique chirurgical et exhaustif structuré ainsi :
+1. Thèse centrale, macro-environnement, contexte institutionnel/économique et problématiques de fond.
+2. Extraction intégrale des données dures (Hard Facts) : TOUS les chiffres, métriques clés, pourcentages, ratios, budgets, volumes, dates charnières, échéances et jalons mentionnés. Ne laisse échapper AUCUN chiffre.
+3. Diagnostic des causes profondes (Root Cause Analysis - 5 Pourquoi) : freins structurels, blocages organisationnels ou techniques, défaillances identifiées.
+4. Opportunités stratégiques, synergies et leviers de création de valeur évoqués dans le texte.
+5. Cartographie des risques majeurs, impacts qualifiés et chiffrés, recommandations prioritaires.
+
+Sois ultra-dense, factuel, fouillé, hautement analytique et sans la moindre approximation. Conserve la langue originale du document.`;
 
             const resIA1 = await callGroqWithFallback(groq, modelsToTry, [
                 { role: "system", content: promptIA1 },
-                { role: "user", content: `DOCUMENT COMPLET À AUDITER :\n=========================================\n${text}\n=========================================` }
-            ], { temperature: 0.2 });
+                { role: "user", content: `DOCUMENT COMPLET À AUDITER EN PROFONDEUR :\n=========================================\n${text}\n=========================================` }
+            ], { temperature: 0.15, max_tokens: 4096 });
 
             const auditSummary = resIA1.text;
-            console.log("IA 1 (Audit) terminée avec succès via", resIA1.model);
+            console.log("IA 1 (Audit en profondeur) terminée avec succès via", resIA1.model);
 
             // --- IA 2 : L'ARCHITECTE NARRATIF (Storytelling & Pyramide de Minto) ---
-            const promptIA2 = `Tu es le Directeur de la Stratégie d'une grande organisation.
-En te basant sur le document original et sur l'audit analytique réalisé par l'IA 1, conçois la TRAME NARRATIVE (Storyline) d'une présentation PowerPoint exécutive parfaite.
-Règles :
-- Applique la logique de la Pyramide de Minto (messages directeurs clairs, logique persuasive déductive/inductive).
-- Découpe la présentation en 6 à 10 diapositives stratégiques.
-- Pour chaque diapositive, définis :
-  * Le rôle narratif de la slide (ex: Cadrage, Démonstration par les chiffres, Pilier d'action 1, Gouvernance, Conclusion).
-  * Les messages et enseignements clés incontournables à y faire figurer.${themeInstruction}
+            const promptIA2 = `Tu es le Directeur de la Stratégie d'une grande organisation et maître du storytelling exécutif.
+À partir du document original et du diagnostic analytique ultra-détaillé de l'IA 1, construis la TRAME NARRATIVE (Storyline) d'une présentation de niveau Conseil d'Administration / Comité Exécutif.
+
+Règles fondamentales :
+- Applique avec rigueur la Pyramide de Minto :
+  * Situation & Cadrage du contexte
+  * Complication & Tension stratégique (appuyée par les faits durs)
+  * Question centrale / Enjeu critique
+  * Résolution stratégique découpée en piliers d'actions concrets et mesurables
+  * Calendrier, gouvernance, gestion des risques et perspectives
+- Découpe la présentation en 6 à 10 diapositives logiques et indissociables.
+- Pour chaque diapositive :
+  * Définis un TITRE DE THÈSE fort et explicite (ex: 'Érosion de 18% des marges due à l'inflation des coûts logistiques' et NON un titre creux comme 'Coûts logistiques').
+  * Détaille le rôle narratif et les messages directeurs indispensables à y démontrer.${themeInstruction}
+
 Conserve la langue originale du document.`;
 
             const resIA2 = await callGroqWithFallback(groq, modelsToTry, [
                 { role: "system", content: promptIA2 },
-                { role: "user", content: `AUDIT ANALYTIQUE (RÉALISÉ PAR L'IA 1) :\n-----------------------------------------\n${auditSummary}\n-----------------------------------------\n\nDOCUMENT ORIGINAL :\n-----------------------------------------\n${text.slice(0, 15000)}\n-----------------------------------------\n\nConstruis la trame narrative stratégique diapositive par diapositive.` }
-            ], { temperature: 0.25 });
+                { role: "user", content: `AUDIT ANALYTIQUE EN PROFONDEUR (RÉALISÉ PAR L'IA 1) :\n-----------------------------------------\n${auditSummary}\n-----------------------------------------\n\nDOCUMENT ORIGINAL :\n-----------------------------------------\n${text.slice(0, 15000)}\n-----------------------------------------\n\nConstruis la trame narrative stratégique diapositive par diapositive.` }
+            ], { temperature: 0.2, max_tokens: 4096 });
 
             const storyline = resIA2.text;
-            console.log("IA 2 (Trame narrative) terminée avec succès via", resIA2.model);
+            console.log("IA 2 (Trame narrative stratégique) terminée avec succès via", resIA2.model);
 
             // --- IA 3 : LE RÉDACTEUR EXÉCUTIF (Formulation d'impact & Sortie JSON) ---
-            const promptIA3 = `Tu es l'Expert Ultime en Rédaction de Présentations pour Comités de Direction.
-À partir de l'Audit (IA 1) et de la Trame Narrative (IA 2), rédige l'intégralité des diapositives au format JSON strict.
+            const promptIA3 = `Tu es l'Expert Ultime en Rédaction de Présentations pour Dirigeants et Comités Stratégiques.
+À partir du diagnostic fouillé (IA 1) et de la trame narrative persuasive (IA 2), rédige l'intégralité des diapositives au format JSON strict.
 
-EXIGENCES ABSOLUES DE RÉDACTION :
-1. Titre de présentation : percutant, engageant et précis.
-2. Titres de chaque diapositive : formuler une VRAIE phrase ou affirmation informative (pas juste un nom générique).
-3. Puces (Bullet points) : 3 à 5 puces par diapositive. BANNIR formellement les puces creuses de 3 mots.
-   Chaque puce doit être formulée selon la règle d'or :
-   'Idée force : explication approfondie, chiffre ou fait marquant extrait du document, et impact mesurable'.
-4. Intégrer scrupuleusement les chiffres, métriques et données factuelles de l'audit.
+EXIGENCES ABSOLUES DE RÉDACTION EN PROFONDEUR :
+1. Titre de présentation : hautement engageant, précis, stratégique.
+2. Titres de chaque diapositive : formuler une VRAIE phrase affirmée et percutante (Thèse explicite avec métrique ou impact clair).
+3. Puces (Bullet points) : 3 à 5 puces denses et substantielles par diapositive.
+   INTERDICTION FORMELLE des puces courtes ou génériques.
+   Chaque puce doit être rédigée avec profondeur selon la règle d'or :
+   'Idée maîtresse en gras/clé : explication fouillée du contexte et de la causalité, chiffre précis ou fait marquant extrait du document, et impact opérationnel ou stratégique mesurable'.
+4. Intégrer systématiquement les données quantitatives et chiffrées de l'audit de l'IA 1.
 5. Conserver la langue originale du document.${themeInstruction}
 
-FORMAT STRICT DU RÉSULTAT (JSON pur, sans bloc markdown, sans commentaire) :
+FORMAT STRICT DU RÉSULTAT (JSON pur, sans bloc markdown, sans texte hors JSON) :
 {
     "presentation_title": "Titre Principal Stratégique",
     "slides": [
         {
-            "title": "Titre informatif et ciblé de la slide",
+            "title": "Titre de thèse affirmé et informatif de la diapositive",
             "bullet_points": [
-                "Idée force 1 : explication détaillée, chiffre clé et impact mesurable",
-                "Idée force 2 : explication détaillée, chiffre clé et impact mesurable",
-                "Idée force 3 : explication détaillée, chiffre clé et impact mesurable"
+                "Idée force 1 : explication détaillée du contexte, chiffre ou métrique clé extraite, impact stratégique concret.",
+                "Idée force 2 : explication détaillée du contexte, chiffre ou métrique clé extraite, impact stratégique concret.",
+                "Idée force 3 : explication détaillée du contexte, chiffre ou métrique clé extraite, impact stratégique concret."
             ]
         }
     ]
@@ -246,8 +298,8 @@ FORMAT STRICT DU RÉSULTAT (JSON pur, sans bloc markdown, sans commentaire) :
 
             const resIA3 = await callGroqWithFallback(groq, modelsToTry, [
                 { role: "system", content: promptIA3 },
-                { role: "user", content: `TRÂME NARRATIVE (IA 2) :\n-----------------------------------------\n${storyline}\n-----------------------------------------\n\nDONNÉES CHIFFRÉES ET FAITS DE L'AUDIT (IA 1) :\n-----------------------------------------\n${auditSummary}\n-----------------------------------------\n\nGénère la présentation PowerPoint finale complète en JSON strict.` }
-            ], { jsonMode: true, temperature: 0.2 });
+                { role: "user", content: `TRÂME NARRATIVE STRATÉGIQUE (IA 2) :\n-----------------------------------------\n${storyline}\n-----------------------------------------\n\nDONNÉES CHIFFRÉES ET FAITS DE L'AUDIT (IA 1) :\n-----------------------------------------\n${auditSummary}\n-----------------------------------------\n\nGénère la présentation PowerPoint finale complète en JSON strict.` }
+            ], { jsonMode: true, temperature: 0.15, max_tokens: 4096 });
 
             finalJsonText = resIA3.text;
             console.log("IA 3 (Rédaction finale) terminée avec succès via", resIA3.model);
@@ -273,13 +325,21 @@ Tu dois STRICTEMENT renvoyer un objet JSON valide avec cette structure exacte :
             const resSingle = await callGroqWithFallback(groq, modelsToTry, [
                 { role: "system", content: singlePrompt },
                 { role: "user", content: `DOCUMENT :\n\n${text}` }
-            ], { jsonMode: true, temperature: 0.3 });
+            ], { jsonMode: true, temperature: 0.25, max_tokens: 3000 });
 
             finalJsonText = resSingle.text;
         }
 
-        // Nettoyage au cas où des balises markdown entourent le JSON
+        // Nettoyage au cas où des balises de réflexion (DeepSeek <think>) ou des balises markdown entourent le JSON
+        finalJsonText = finalJsonText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
         finalJsonText = finalJsonText.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+        // Extraction chirurgicale du bloc JSON { ... }
+        const firstBrace = finalJsonText.indexOf('{');
+        const lastBrace = finalJsonText.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            finalJsonText = finalJsonText.substring(firstBrace, lastBrace + 1);
+        }
 
         const jsonResult = JSON.parse(finalJsonText);
         res.json(jsonResult);
