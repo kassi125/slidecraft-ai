@@ -181,14 +181,29 @@
                         <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
                             <span>📑</span> Diapositives (Aperçu & Modification)
                         </h2>
-                        <p class="text-xs text-slate-500 mt-0.5">Modifiez les textes directement ou ajoutez vos propres diapositives à la main.</p>
+                        <p class="text-xs text-slate-500 mt-0.5">Modifiez vos textes directement ou chargez une présentation toute faite.</p>
                     </div>
-                    <button onclick="addSlideManually()" class="px-3.5 py-2 bg-white hover:bg-brand-50 text-brand-700 border border-brand-200 rounded-lg text-sm font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-                        </svg>
-                        Ajouter une diapositive
-                    </button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button onclick="toggleImportModal(true)" class="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            Coller un texte prêt
+                        </button>
+                        <select id="templateSelect" onchange="loadReadyTemplate(this.value); this.value='';" class="px-2.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold shadow-sm transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            <option value="">⚡ Modèles prêts...</option>
+                            <option value="pitch">🚀 Pitch Deck Startup (6 slides)</option>
+                            <option value="bilan">📊 Bilan Trimestriel / KPI (5 slides)</option>
+                            <option value="commercial">💼 Proposition Commerciale (5 slides)</option>
+                            <option value="formation">🎓 Formation / Pédagogie (5 slides)</option>
+                        </select>
+                        <button onclick="addSlideManually()" class="px-3 py-2 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                            </svg>
+                            + Diapo
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Titre général de la présentation -->
@@ -423,6 +438,315 @@
             renderSlidesEditor();
         }
 
+        // Gestion de la modale d'importation
+        function toggleImportModal(show) {
+            const modal = document.getElementById('importModal');
+            if (modal) {
+                if (show) {
+                    modal.classList.remove('hidden');
+                    document.getElementById('importTextarea').focus();
+                } else {
+                    modal.classList.add('hidden');
+                }
+            }
+        }
+
+        // Parseur intelligent pour transformer du texte collé en diapositives
+        function parseAndImportText() {
+            const raw = (document.getElementById('importTextarea').value || "").trim();
+            if (!raw) {
+                alert("Veuillez coller le texte de votre présentation avant de valider.");
+                return;
+            }
+
+            const lines = raw.split('\n');
+            let presentationTitle = "";
+            const parsedSlides = [];
+            let currentSlide = null;
+
+            lines.forEach(line => {
+                const trimmed = line.trim();
+                if (!trimmed) return;
+
+                // Titre principal éventuel
+                if (!presentationTitle && (trimmed.startsWith('# ') || trimmed.toLowerCase().startsWith('titre :') || trimmed.toLowerCase().startsWith('titre:'))) {
+                    presentationTitle = trimmed.replace(/^#\s*/, '').replace(/^titre\s*:\s*/i, '').trim();
+                    return;
+                }
+
+                // Détection de titre de diapositive (Markdown ##, ###, ou Slide 1, Diapo 1, Partie 1...)
+                const isHeading = trimmed.startsWith('## ') || 
+                                  trimmed.startsWith('### ') || 
+                                  /^(slide|diapo|diapositive|partie|axe|chapitre)\s*\d*\s*[:\-]/i.test(trimmed);
+
+                if (isHeading) {
+                    if (currentSlide) {
+                        parsedSlides.push(currentSlide);
+                    }
+                    let sTitle = trimmed
+                        .replace(/^#+\s*/, '')
+                        .replace(/^(slide|diapo|diapositive|partie|axe|chapitre)\s*\d*\s*[:\-]\s*/i, '')
+                        .trim();
+
+                    currentSlide = {
+                        title: sTitle || "Diapositive",
+                        bullet_points: []
+                    };
+                } else if (trimmed.startsWith('-') || trimmed.startsWith('*') || trimmed.startsWith('•') || /^\d+[\.\)]\s/.test(trimmed)) {
+                    // Puce détectée
+                    const cleanBullet = trimmed
+                        .replace(/^[\-\*\•]\s*/, '')
+                        .replace(/^\d+[\.\)]\s*/, '')
+                        .trim();
+
+                    if (!currentSlide) {
+                        currentSlide = {
+                            title: "Introduction",
+                            bullet_points: []
+                        };
+                    }
+                    currentSlide.bullet_points.push(cleanBullet);
+                } else {
+                    // Ligne de texte libre
+                    if (!presentationTitle && parsedSlides.length === 0 && !currentSlide) {
+                        presentationTitle = trimmed;
+                    } else if (!currentSlide) {
+                        currentSlide = {
+                            title: trimmed,
+                            bullet_points: []
+                        };
+                    } else {
+                        currentSlide.bullet_points.push(trimmed);
+                    }
+                }
+            });
+
+            if (currentSlide) {
+                parsedSlides.push(currentSlide);
+            }
+
+            if (parsedSlides.length === 0) {
+                alert("Impossible d'extraire des diapositives. Veillez à inclure des titres et des puces.");
+                return;
+            }
+
+            if (presentationTitle) {
+                document.getElementById('presentationTitleInput').value = presentationTitle;
+            }
+            currentSlides = parsedSlides;
+            renderSlidesEditor();
+            toggleImportModal(false);
+            document.getElementById('importTextarea').value = "";
+
+            updateStatus(`✅ Présentation importée avec succès (${currentSlides.length} diapositives) !`);
+            document.getElementById('statusArea').classList.remove('hidden');
+            document.getElementById('slidesEditorSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Modèles de présentations prêtes à l'emploi
+        const READY_TEMPLATES = {
+            pitch: {
+                title: "Pitch Deck Stratégique : Projet NextGen",
+                slides: [
+                    {
+                        title: "1. Le Problème & L'Opportunité",
+                        bullet_points: [
+                            "Point de douleur critique : 78% des entreprises peinent à digitaliser leurs processus clés.",
+                            "Coût de l'inaction : pertes estimées à plus de 45 000€ par an en inefficacités administratives.",
+                            "Opportunité marché : un secteur en forte expansion (+18% par an) sans leader dominant."
+                        ]
+                    },
+                    {
+                        title: "2. Notre Solution Disruptive",
+                        bullet_points: [
+                            "Plateforme SaaS unifiée : centralisation automatisée en 1 clic sans installation technique.",
+                            "Gain de productivité immédiat : réduction du temps de traitement de 15h à 2h par semaine.",
+                            "Expérience utilisateur intuitive : adoption garantie dès le premier jour par toutes les équipes."
+                        ]
+                    },
+                    {
+                        title: "3. Taille du Marché & Cible",
+                        bullet_points: [
+                            "TAM (Total Addressable Market) : 4,2 milliards d'euros en Europe.",
+                            "SAM (Serviceable Addressable Market) : 850 millions d'euros sur notre segment prioritaire.",
+                            "SOM (Serviceable Obtainable Market) : 25 millions d'euros visés à 3 ans (3% de PDM)."
+                        ]
+                    },
+                    {
+                        title: "4. Modèle Économique (Business Model)",
+                        bullet_points: [
+                            "Abonnement récurrent (MRR) : formules B2B de 49€ à 299€/mois par utilisateur.",
+                            "Valeur vie client (LTV) : 4 800€ avec un taux d'attrition (churn) maîtrisé inférieur à 1,5%.",
+                            "Coût d'acquisition client (CAC) : 450€, rentabilisé en moins de 4 mois (ratio LTV/CAC > 10)."
+                        ]
+                    },
+                    {
+                        title: "5. L'Équipe & Les Fondateurs",
+                        bullet_points: [
+                            "CEO & Co-fondateur : 10 ans d'expérience en direction générale et scaling de startups.",
+                            "CTO & Co-fondateur : ancien lead architecte IA, auteur de 3 brevets technologiques.",
+                            "Conseil consultatif (Advisors) : 2 experts reconnus du secteur pour accélérer le go-to-market."
+                        ]
+                    },
+                    {
+                        title: "6. Demande de Financement & Roadmap",
+                        bullet_points: [
+                            "Levée de fonds visée : 500 000€ pour accélérer la croissance commerciale et la R&D.",
+                            "Allocation des fonds : 50% recrutement tech & vente, 30% marketing, 20% opérations.",
+                            "Objectif à 18 mois : atteindre 1M€ d'ARR et 500 clients actifs en Europe."
+                        ]
+                    }
+                ]
+            },
+            bilan: {
+                title: "Bilan d'Activité & Performance Trimestrielle",
+                slides: [
+                    {
+                        title: "1. Faits Marquants du Trimestre",
+                        bullet_points: [
+                            "Surperformance commerciale : chiffre d'affaires en hausse de +24% par rapport aux prévisions.",
+                            "Lancement réussi de la nouvelle offre avec plus de 120 nouveaux clients signés.",
+                            "Taux de satisfaction client (NPS) record à +68 points."
+                        ]
+                    },
+                    {
+                        title: "2. Chiffres Clés & Résultats Financiers",
+                        bullet_points: [
+                            "Chiffre d'Affaires global : 1 250 000€ vs 1 000 000€ budgetés (+25%).",
+                            "Marge brute opérationnelle : 42% (gain de +3 points grâce aux synergies logistiques).",
+                            "Trésorerie nette disponible : 420 000€ assurant 14 mois de visibilité sereine."
+                        ]
+                    },
+                    {
+                        title: "3. Projets Déployés & Réalisations",
+                        bullet_points: [
+                            "Migration de l'infrastructure cloud finalisée dans les délais sans coupure de service.",
+                            "Refonte de l'interface client générant une hausse de rétention de +15%.",
+                            "Renforcement des équipes avec le recrutement de 4 profils clés en support et vente."
+                        ]
+                    },
+                    {
+                        title: "4. Défis Rencontrés & Points de Vigilance",
+                        bullet_points: [
+                            "Allongement des cycles de décision sur les comptes grands comptes (+15 jours).",
+                            "Tension sur les coûts matières nécessitant une négociation active avec les fournisseurs.",
+                            "Plan d'action correctif : lancement d'une cellule dédiée au closing rapide."
+                        ]
+                    },
+                    {
+                        title: "5. Priorités Stratégiques pour le Prochain Trimestre",
+                        bullet_points: [
+                            "Priorité 1 : Expansion internationale ciblée sur les marchés germanophones.",
+                            "Priorité 2 : Automatisation du support client pour absorber la hausse du volume.",
+                            "Priorité 3 : Poursuite du plan de fidélisation pour viser 95% de renouvellement."
+                        ]
+                    }
+                ]
+            },
+            commercial: {
+                title: "Proposition Commerciale & Accompagnement Stratégique",
+                slides: [
+                    {
+                        title: "1. Compréhension de vos Enjeux",
+                        bullet_points: [
+                            "Votre défi majeur : accélérer la transformation digitale tout en préservant la qualité de service.",
+                            "Les freins actuels : outils vieillissants, silos organisationnels et perte de temps manuel.",
+                            "L'ambition : devenir la référence d'excellence opérationnelle sur votre marché sous 12 mois."
+                        ]
+                    },
+                    {
+                        title: "2. Notre Approche sur-mesure",
+                        bullet_points: [
+                            "Diagnostic initial exhaustif : audit 360° de vos processus existants et cartographie des irritants.",
+                            "Co-construction de la solution : ateliers collaboratifs avec vos équipes opérationnelles.",
+                            "Déploiement agile et progressif par sprints courts avec livrables actionnables chaque semaine."
+                        ]
+                    },
+                    {
+                        title: "3. Méthodologie & Calendrier d'Exécution",
+                        bullet_points: [
+                            "Mois 1 (Phase Cadrage) : Entretiens utilisateurs, benchmark sectoriel et cahier des charges.",
+                            "Mois 2-3 (Phase Déploiement) : Configuration des outils, intégrations API et tests pilotes.",
+                            "Mois 4 (Phase Conduite du Changement) : Formations personnalisées et accompagnement terrain."
+                        ]
+                    },
+                    {
+                        title: "4. Investissement & Conditions Financières",
+                        bullet_points: [
+                            "Forfait d'accompagnement global clé en main : 18 500€ HT incluant l'ensemble des livrables.",
+                            "Échéancier de paiement sécurisé : 30% au démarrage, 40% aux tests pilotes, 30% à la livraison.",
+                            "Retour sur investissement (ROI) projeté : rentabilisé en moins de 6 mois d'exploitation."
+                        ]
+                    },
+                    {
+                        title: "5. Pourquoi Nous Choisir & Garanties",
+                        bullet_points: [
+                            "Expertise prouvée : plus de 85 projets similaires déployés avec succès ces 4 dernières années.",
+                            "Équipe dédiée : un interlocuteur unique senior et un support réactif disponible 5j/7.",
+                            "Garantie satisfaction : engagement de conformité contractuelle sur les résultats livrés."
+                        ]
+                    }
+                ]
+            },
+            formation: {
+                title: "Module de Formation : Excellence Professionnelle",
+                slides: [
+                    {
+                        title: "1. Objectifs Pédagogiques du Module",
+                        bullet_points: [
+                            "Maîtriser les fondamentaux théoriques et pratiques indispensables au quotidien.",
+                            "Acquérir les bons réflexes méthodologiques pour gagner en efficacité et en sérénité.",
+                            "Savoir appliquer immédiatement les acquis dès le retour en poste de travail."
+                        ]
+                    },
+                    {
+                        title: "2. Notions Clés & Principes Fondamentaux",
+                        bullet_points: [
+                            "Principe 1 : Règle des 80/20 (Pareto) appliquée à la priorisation quotidienne des tâches.",
+                            "Principe 2 : Communication structurée (Méthode Pyramide) pour convaincre avec clarté.",
+                            "Principe 3 : Gestion rigoureuse du temps et élimination systématique des voleurs d'attention."
+                        ]
+                    },
+                    {
+                        title: "3. Étude de Cas & Mise en Situation Réelle",
+                        bullet_points: [
+                            "Scénario proposé : gestion d'une crise client urgente avec ressources limitées.",
+                            "Exercice en sous-groupes de 3 personnes : élaboration d'un plan de réponse en 20 minutes.",
+                            "Restitution plénière : debriefing collectif, analyse des points forts et axes de progrès."
+                        ]
+                    },
+                    {
+                        title: "4. Bonnes Pratiques & Pièges à Éviter",
+                        bullet_points: [
+                            "À privilégier : formaliser les décisions par écrit et définir un responsable unique par action.",
+                            "À bannir : reporter les décisions difficiles et multiplier les réunions sans ordre du jour.",
+                            "Outils recommandés : check-lists de contrôle opérationnelles et modèles pré-remplis."
+                        ]
+                    },
+                    {
+                        title: "5. Plan d'Action Individuel & Prochaines Étapes",
+                        bullet_points: [
+                            "Auto-évaluation : identifier 3 actions concrètes à implémenter dans les 7 prochains jours.",
+                            "Session de suivi : point d'étape individuel à 30 jours pour mesurer les progrès réels.",
+                            "Ressources complémentaires : fiches mémos et guides pratiques téléchargeables."
+                        ]
+                    }
+                ]
+            }
+        };
+
+        function loadReadyTemplate(key) {
+            if (!key || !READY_TEMPLATES[key]) return;
+            const tpl = READY_TEMPLATES[key];
+            document.getElementById('presentationTitleInput').value = tpl.title;
+            currentSlides = JSON.parse(JSON.stringify(tpl.slides));
+            renderSlidesEditor();
+            
+            updateStatus(`✅ Modèle "${tpl.title}" chargé avec succès ! Vous pouvez le modifier ci-dessous.`);
+            document.getElementById('statusArea').classList.remove('hidden');
+            document.getElementById('slidesEditorSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
         async function downloadCustomizedPPTX() {
             if (currentSlides.length === 0) {
                 alert("Ajoutez au moins une diapositive avant de télécharger !");
@@ -619,5 +943,34 @@
             await pptx.writeFile({ fileName: outName });
         }
     </script>
+
+    <!-- Modale pour coller une présentation prête -->
+    <div id="importModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden transition-opacity duration-200">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 border border-slate-100 transform transition-all">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <span>📋</span> Coller ou Importer une présentation prête
+                </h3>
+                <button onclick="toggleImportModal(false)" class="text-slate-400 hover:text-slate-600 p-1 cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <p class="text-xs text-slate-500 mb-3">
+                Collez votre plan, un texte structuré ou des notes de réunion. Le système découpera automatiquement vos titres et vos puces pour créer les diapositives !
+            </p>
+            <textarea id="importTextarea" rows="9" placeholder="Exemple :&#10;# Bilan Stratégique 2026&#10;&#10;## 1. Contexte & Opportunités&#10;- Croissance de +15% sur le trimestre&#10;- Lancement réussi du nouveau service&#10;&#10;## 2. Plan d'Action&#10;- Recrutement de 3 ingénieurs clés&#10;- Finalisation du pilote avant fin d'année" class="w-full p-3.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-800 font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 mb-4 leading-relaxed"></textarea>
+            
+            <div class="flex justify-end gap-3">
+                <button onclick="toggleImportModal(false)" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer">
+                    Annuler
+                </button>
+                <button onclick="parseAndImportText()" class="px-5 py-2 text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-md transition-all flex items-center gap-2 cursor-pointer">
+                    <span>📥</span> Charger dans l'éditeur
+                </button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
