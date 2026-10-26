@@ -38,28 +38,25 @@ const DEPRECATED_MODELS = [
     'llama3-8b-8192'
 ];
 
-// Prépare le texte du document pour garantir le respect strict des limites TPM de Groq (7000 ITPM / 8000 TPM)
-function smartPrepareDocumentText(rawText, maxChars = 12000) {
+// Prépare le texte du document pour respecter les limites TPM tout en conservant l'intégralité des documents jusqu'à ~15 pages
+function smartPrepareDocumentText(rawText, maxChars = 24000) {
     if (!rawText || rawText.length <= maxChars) return rawText;
 
-    // Isoler et sanctuariser tous les tableaux détectés
-    const tableRegex = /=== \[TABLEAU [\s\S]*?=== \[FIN DU TABLEAU.*?===/gi;
+    // Isoler et sanctuariser tous les tableaux et sections de chiffres
+    const tableRegex = /(?:=== \[TABLEAU [\s\S]*?=== \[FIN DU TABLEAU.*?===|(?:\|[^\n]+\|\r?\n){2,})/gi;
     const tables = rawText.match(tableRegex) || [];
     const tablesText = tables.join("\n\n");
 
-    // Si les tableaux à eux seuls occupent une grande partie
-    if (tablesText.length >= maxChars * 0.75) {
-        return tablesText.slice(0, maxChars) + "\n\n[... données tabulaires extraites ...]";
-    }
-
-    const remainingChars = maxChars - tablesText.length;
-    const headChars = Math.floor(remainingChars * 0.6);
-    const tailChars = Math.floor(remainingChars * 0.4);
+    // Si le document est un gros fichier de plusieurs pages (> 24 000 caractères) :
+    // On conserve le début (50%), la fin (30%) et les tableaux sanctuarisés
+    const remainingChars = Math.max(8000, maxChars - tablesText.length);
+    const headChars = Math.floor(remainingChars * 0.55);
+    const tailChars = Math.floor(remainingChars * 0.35);
 
     const head = rawText.slice(0, headChars);
     const tail = rawText.slice(-tailChars);
 
-    return `${head}\n\n[... Synthèse intermédiaire respectant les limites de tokens ...]\n\n${tablesText}\n\n${tail}`;
+    return `${head}\n\n[... SYNTHÈSE DES SECTIONS INTERMÉDIAIRES DU DOCUMENT MULTI-PAGES ...]\n\n=== [TABLEAUX ET CHIFFRES SANCTUARISÉS DU DOCUMENT] ===\n${tablesText}\n\n${tail}`;
 }
 
 // Score d'intelligence et de profondeur d'analyse (priorité absolue aux modèles de raisonnement 120B/27B/20B)
@@ -295,7 +292,7 @@ Sois ultra-dense, factuel, fouillé et sans la moindre approximation. Conserve l
             const resIA1 = await callGroqWithFallback(groq, modelsToTry, [
                 { role: "system", content: promptIA1 },
                 { role: "user", content: `DOCUMENT COMPLET À AUDITER EN PROFONDEUR :\n=========================================\n${text}\n=========================================` }
-            ], { temperature: 0.15, max_tokens: 1400 });
+            ], { temperature: 0.15, max_tokens: 1500 });
 
             const auditSummary = resIA1.text;
             console.log("IA 1 (Audit en profondeur) terminée avec succès via", resIA1.model);
@@ -304,15 +301,21 @@ Sois ultra-dense, factuel, fouillé et sans la moindre approximation. Conserve l
             const promptIA2 = `Tu es le Directeur de la Stratégie d'une grande organisation et maître du storytelling exécutif.
 À partir du document original et du diagnostic analytique ultra-détaillé de l'IA 1, construis la TRAME NARRATIVE (Storyline) d'une présentation de niveau Conseil d'Administration / Comité Exécutif.
 
-Règles fondamentales :
-- Applique avec rigueur la Pyramide de Minto :
-  * Situation & Cadrage du contexte
-  * Complication & Tension stratégique (appuyée par les faits durs)
-  * Question centrale / Enjeu critique
-  * Résolution stratégique découpée en piliers d'actions concrets et mesurables
-  * Calendrier, gouvernance, gestion des risques et perspectives
-- VALORISATION DES TABLEAUX ET DES CHIFFRES : Si le document original ou l'audit de l'IA 1 contient un ou plusieurs tableaux de données (bilan financier, KPIs, plannings, comparatifs...), tu DOIS obligatoirement dédier une ou plusieurs diapositives spécifiquement pour afficher et analyser ces tableaux !
-- Découpe la présentation en 6 à 10 diapositives logiques et indissociables.
+EXIGENCES ABSOLUES :
+1. NOMBRE DE DIAPOSITIVES : Tu DOIS OBLIGATOIREMENT concevoir une présentation dense et complète de 8 À 12 DIAPOSITIVES (INTERDICTION FORMELLE de faire seulement 2 ou 3 slides !).
+   Chaque page, enjeu, bilan, analyse de fond et recommandation du document doit avoir sa propre diapositive dédiée.
+2. VALORISATION OBLIGATOIRE DES TABLEAUX ET CHIFFRES : Prévois au minimum 1 à 3 diapositives dédiées spécifiquement à des TABLEAUX (Bilan financier, KPIs, comparatifs d'activité, planning ou synthèse de données).
+3. Règles narratives :
+   - Applique avec rigueur la Pyramide de Minto :
+     * Slide 1 : Cadrage & Contexte global
+     * Slide 2 : Problématiques majeures & Tensions stratégiques
+     * Slide 3 : Indicateurs Clés de Performance & Données Chiffrées (TABLEAU 1)
+     * Slide 4 : Analyse approfondie des causes racines et freins
+     * Slide 5 : Piliers d'actions stratégiques et leviers prioritaires
+     * Slide 6 : Bilan d'activité, Comparatif & Résultats Financiers (TABLEAU 2)
+     * Slide 7 : Feuille de route opérationnelle, calendrier et jalons
+     * Slide 8 : Gouvernance, gestion des risques et facteurs clés de succès
+     * (Slides 9 à 12 : selon les autres sections et thématiques du document)
 - Pour chaque diapositive :
   * Définis un TITRE DE THÈSE fort et explicite (ex: 'Érosion de 18% des marges due à l'inflation des coûts logistiques' et NON un titre creux comme 'Coûts logistiques').
   * Indique clairement si cette slide doit contenir un TABLEAU extrait du document et spécifie ses données.${themeInstruction}
@@ -321,8 +324,8 @@ Conserve la langue originale du document.`;
 
             const resIA2 = await callGroqWithFallback(groq, modelsToTry, [
                 { role: "system", content: promptIA2 },
-                { role: "user", content: `AUDIT ANALYTIQUE EN PROFONDEUR (RÉALISÉ PAR L'IA 1) :\n-----------------------------------------\n${auditSummary.slice(0, 6000)}\n-----------------------------------------\n\nDOCUMENT ORIGINAL :\n-----------------------------------------\n${text.slice(0, 8000)}\n-----------------------------------------\n\nConstruis la trame narrative stratégique diapositive par diapositive.` }
-            ], { temperature: 0.2, max_tokens: 1200 });
+                { role: "user", content: `AUDIT ANALYTIQUE EN PROFONDEUR (RÉALISÉ PAR L'IA 1) :\n-----------------------------------------\n${auditSummary.slice(0, 6000)}\n-----------------------------------------\n\nDOCUMENT ORIGINAL :\n-----------------------------------------\n${text.slice(0, 10000)}\n-----------------------------------------\n\nConstruis la trame narrative stratégique diapositive par diapositive (8 à 12 diapositives minimum).` }
+            ], { temperature: 0.2, max_tokens: 1400 });
 
             const storyline = resIA2.text;
             console.log("IA 2 (Trame narrative stratégique) terminée avec succès via", resIA2.model);
@@ -331,52 +334,115 @@ Conserve la langue originale du document.`;
             const promptIA3 = `Tu es l'Expert Ultime en Rédaction de Présentations pour Dirigeants et Comités Stratégiques.
 À partir du diagnostic fouillé (IA 1) et de la trame narrative persuasive (IA 2), rédige l'intégralité des diapositives au format JSON strict.
 
-EXIGENCES ABSOLUES DE RÉDACTION ET RESTITUTION DES TABLEAUX :
-1. RESTITUTION VISUELLE DES TABLEAUX :
-   - Pour chaque diapositive qui présente des données tabulaires du document, inclus OBLIGATOIREMENT l'objet "table" avec "headers" (tableau des noms de colonnes) et "rows" (tableau des lignes contenant les valeurs).
-   - Conserve fidèlement chaque valeur, chiffre, pourcentage et intitulé du tableau d'origine.
-   - S'il n'y a pas de tableau pour une diapositive conceptuelle, mets "table": null.
-2. MISE EN AVANT DES CHIFFRES DANS LES PUCES :
-   - Dans TOUTES les puces, mets systématiquement en valeur les chiffres clés, métriques, dates et pourcentages.
+EXIGENCES ABSOLUES DE RÉDACTION :
+1. NOMBRE DE DIAPOSITIVES : Tu DOIS OBLIGATOIREMENT GÉNÉRER ENTRE 8 ET 12 DIAPOSITIVES COMPLÈTES (strict minimum 8 diapositives !).
+   INTERDICTION FORMELLE ET STRICTE de générer seulement 2 ou 3 diapositives. Une présentation courte est CONSIDÉRÉE COMME UN ÉCHEC TOTAL.
+2. TABLEAUX OBLIGATOIRES : Au moins 1 à 3 diapositives DOIVENT OBLIGATOIREMENT contenir un objet "table" complet avec "headers" et "rows".
+   - Si le document contient des tableaux, reproduis-les fidèlement dans "table".
+   - Si le document contient des chiffres et statistiques (CA, marges, volumes, plannings, comparatifs...), structure-les dans l'objet "table" pour offrir une restitution visuelle claire !
+   - Sur les diapositives purement conceptuelles, mets "table": null.
+3. PUCES EXÉCUTIVES (3 à 5 par diapositive) :
    - Règle d'or de rédaction pour chaque puce :
      'Idée maîtresse en gras/clé : explication fouillée du contexte et de la causalité, chiffre précis ou fait marquant extrait du document, et impact opérationnel ou stratégique mesurable'.
-3. Titre de présentation : hautement engageant, précis, stratégique.
-4. Titres de chaque diapositive : formuler une VRAIE phrase affirmée et percutante (Thèse explicite avec métrique ou impact clair).
+4. Titre de chaque diapositive : formuler une VRAIE phrase affirmée et percutante (Thèse explicite avec métrique ou impact clair).
 5. Conserver la langue originale du document.${themeInstruction}
 
-FORMAT STRICT DU RÉSULTAT (JSON pur, sans bloc markdown, sans texte hors JSON) :
+FORMAT STRICT DU RÉSULTAT (JSON pur, sans bloc markdown, sans texte hors JSON).
+STRUCTURE COMPLÈTE ATTENDUE (Génère impérativement l'ensemble des 8 à 12 diapositives) :
 {
     "presentation_title": "Titre Principal Stratégique",
     "slides": [
         {
-            "title": "Titre de thèse affirmé et informatif de la diapositive",
+            "title": "1. Cadrage et Contexte Stratégique Global",
             "bullet_points": [
-                "Idée force 1 : explication détaillée avec chiffre marquant (+25%) et impact concret.",
-                "Idée force 2 : explication détaillée avec donnée chiffrée et recommandation opérationnelle."
+                "Idée force 1 : explication détaillée avec chiffre marquant et impact concret.",
+                "Idée force 2 : explication détaillée avec donnée chiffrée et recommandation opérationnelle.",
+                "Idée force 3 : synthèse des enjeux majeurs."
             ],
             "table": null
         },
         {
-            "title": "Bilan Financier et Comparatif d'Activité (Tableau Récapitulatif)",
+            "title": "2. Diagnostic des Problématiques et Enjeux Critiques",
             "bullet_points": [
-                "Analyse clé : croissance globale supérieure aux prévisions grâce à la dynamique digitale."
+                "Constat prioritaire : explication fouillée du diagnostic et des freins identifiés.",
+                "Point d'alerte : données chiffrées sur les pertes d'efficacité ou surcoûts.",
+                "Tension stratégique : impacts mesurés sur les opérations."
+            ],
+            "table": null
+        },
+        {
+            "title": "3. Données Chiffrées et Indicateurs Clés de Performance",
+            "bullet_points": [
+                "Analyse des métriques : mise en perspective des résultats consolidés du tableau ci-dessous.",
+                "Tendance forte : évolution positive sur les indicateurs de tête."
             ],
             "table": {
-                "headers": ["Indicateur", "2024", "2025", "Variation"],
+                "headers": ["Indicateur Clé", "Période N-1", "Période N", "Variation", "Impact"],
                 "rows": [
-                    ["Chiffre d'affaires", "1.2 M€", "1.5 M€", "+25%"],
-                    ["Marge brute", "38%", "42%", "+4 pts"],
-                    ["Trésorerie nette", "320 k€", "510 k€", "+59%"]
+                    ["Chiffre d'affaires", "1.0 M€", "1.25 M€", "+25%", "Surperformance"],
+                    ["Marge opérationnelle", "18%", "22%", "+4 pts", "Favorable"],
+                    ["Trésorerie disponible", "350 k€", "420 k€", "+20%", "Sécurisé"]
                 ]
             }
+        },
+        {
+            "title": "4. Analyse Approfondie des Causes Racines",
+            "bullet_points": [
+                "Cause structurelle 1 : analyse détaillée des facteurs d'influence.",
+                "Facteur organisationnel : blocages identifiés et leviers de déblocage.",
+                "Conséquences opérationnelles : quantification précise des impacts."
+            ],
+            "table": null
+        },
+        {
+            "title": "5. Piliers d'Action et Recommandations Prioritaires",
+            "bullet_points": [
+                "Pilier 1 : action stratégique majeure avec objectifs chiffrés à court terme.",
+                "Pilier 2 : déploiement opérationnel et optimisation des ressources.",
+                "Pilier 3 : conduite du changement et appropriation collective."
+            ],
+            "table": null
+        },
+        {
+            "title": "6. Bilan Comparatif et Résultats Financiers Récapitulatifs",
+            "bullet_points": [
+                "Synthèse comparative : mise en avant des écarts constatés dans la grille ci-dessous.",
+                "Levier de rentabilité : amélioration de la structure de coûts."
+            ],
+            "table": {
+                "headers": ["Poste Budgétaire / Axe", "Budget Prévisionnel", "Réalisé", "Écart constaté"],
+                "rows": [
+                    ["Pôle Commercial", "250 k€", "230 k€", "-8% (Économie)"],
+                    ["Développement Produit", "400 k€", "420 k€", "+5% (Accélération)"],
+                    ["Opérations & Logistique", "150 k€", "140 k€", "-7% (Synergie)"]
+                ]
+            }
+        },
+        {
+            "title": "7. Feuille de Route, Calendrier et Jalons Opérationnels",
+            "bullet_points": [
+                "Phase 1 (Mois 1-2) : cadrage initial et validation des prérequis techniques.",
+                "Phase 2 (Mois 3-5) : déploiement pilote et premiers retours d'expérience.",
+                "Phase 3 (Mois 6+) : passage à l'échelle et consolidation des acquis."
+            ],
+            "table": null
+        },
+        {
+            "title": "8. Gouvernance, Gestion des Risques et Facteurs Clés de Succès",
+            "bullet_points": [
+                "Matrice des risques : identification des points de vigilance majeurs et parades associées.",
+                "Dispositif de pilotage : rituels de gouvernance et indicateurs de suivi hebdomadaires.",
+                "Facteur clé de succès : engagement fort des parties prenantes et suivi rigoureux."
+            ],
+            "table": null
         }
     ]
 }`;
 
             const resIA3 = await callGroqWithFallback(groq, modelsToTry, [
                 { role: "system", content: promptIA3 },
-                { role: "user", content: `TRÂME NARRATIVE STRATÉGIQUE (IA 2) :\n-----------------------------------------\n${storyline.slice(0, 5000)}\n-----------------------------------------\n\nDONNÉES CHIFFRÉES ET FAITS DE L'AUDIT (IA 1) :\n-----------------------------------------\n${auditSummary.slice(0, 5000)}\n-----------------------------------------\n\nGénère la présentation PowerPoint finale complète en JSON strict.` }
-            ], { jsonMode: true, temperature: 0.15, max_tokens: 1800 });
+                { role: "user", content: `TRÂME NARRATIVE STRATÉGIQUE (IA 2) :\n-----------------------------------------\n${storyline.slice(0, 5000)}\n-----------------------------------------\n\nDONNÉES CHIFFRÉES ET FAITS DE L'AUDIT (IA 1) :\n-----------------------------------------\n${auditSummary.slice(0, 5000)}\n-----------------------------------------\n\nGénère impérativement la présentation PowerPoint complète (8 à 12 diapositives détaillées avec tableaux) en JSON strict.` }
+            ], { jsonMode: true, temperature: 0.15, max_tokens: 3000 });
 
             finalJsonText = resIA3.text;
             console.log("IA 3 (Rédaction finale) terminée avec succès via", resIA3.model);
@@ -387,37 +453,58 @@ FORMAT STRICT DU RÉSULTAT (JSON pur, sans bloc markdown, sans texte hors JSON) 
             // =========================================================================
             console.log("Exécution en Mode Express (1 IA)...");
             const singlePrompt = `Tu es un expert en création de présentations professionnelles et exécutives.
-Lis le texte fourni et extrais les informations les plus importantes pour créer une présentation PowerPoint claire, concise et étayée de chiffres.${themeInstruction}
+Lis le texte fourni et génère une présentation PowerPoint complète, détaillée et étayée de chiffres.${themeInstruction}
 
-CONSIGNE TABLEAUX ET CHIFFRES :
-Si le texte contient des tableaux de données ou des comparaisons chiffrées, conserve-les et reproduis-les fidèlement via l'objet "table" (avec "headers" et "rows").
-Dans les puces, mets toujours en avant les chiffres, pourcentages et résultats concrets.
+EXIGENCES ABSOLUES :
+1. NOMBRE DE DIAPOSITIVES : Tu DOIS générer entre 6 et 8 diapositives complètes (INTERDICTION DE FAIRE MOINS DE 6 SLIDES).
+2. TABLEAUX : Au moins 1 diapositive DOIT contenir un objet "table" complet (avec "headers" et "rows") pour afficher les chiffres clés sous forme de tableau.
 
 Tu dois STRICTEMENT renvoyer un objet JSON valide avec cette structure exacte :
 {
     "presentation_title": "Titre principal",
     "slides": [
         {
-            "title": "Titre informatif de la diapositive",
-            "bullet_points": ["Point clé approfondi avec chiffres"],
+            "title": "1. Cadrage et Enjeux Stratégiques",
+            "bullet_points": ["Point clé 1 approfondi avec chiffres", "Point clé 2 approfondi"],
             "table": null
         },
         {
-            "title": "Tableau Récapitulatif des Chiffres Clés",
-            "bullet_points": ["Analyse synthétique du tableau ci-dessous"],
+            "title": "2. Diagnostic et Données Clés",
+            "bullet_points": ["Analyse des données ci-dessous"],
             "table": {
-                "headers": ["Colonne 1", "Colonne 2", "Colonne 3"],
+                "headers": ["Indicateur", "Valeur N-1", "Valeur N", "Écart"],
                 "rows": [
-                    ["Valeur A", "100 k€", "+15%"]
+                    ["Chiffre d'Affaires", "1.0 M€", "1.2 M€", "+20%"],
+                    ["Marge", "15%", "18%", "+3 pts"]
                 ]
             }
+        },
+        {
+            "title": "3. Piliers d'Action et Recommandations",
+            "bullet_points": ["Action prioritaire 1", "Action prioritaire 2"],
+            "table": null
+        },
+        {
+            "title": "4. Plan d'Exécution et Calendrier",
+            "bullet_points": ["Jalon 1", "Jalon 2"],
+            "table": null
+        },
+        {
+            "title": "5. Gouvernance et Conclusion",
+            "bullet_points": ["Facteur de succès 1", "Facteur de succès 2"],
+            "table": null
+        },
+        {
+            "title": "6. Synthèse des Résultats Attendus",
+            "bullet_points": ["Bénéfice mesuré 1", "Bénéfice mesuré 2"],
+            "table": null
         }
     ]
 }`;
             const resSingle = await callGroqWithFallback(groq, modelsToTry, [
                 { role: "system", content: singlePrompt },
-                { role: "user", content: `DOCUMENT :\n\n${text.slice(0, 9000)}` }
-            ], { jsonMode: true, temperature: 0.25, max_tokens: 1500 });
+                { role: "user", content: `DOCUMENT :\n\n${text.slice(0, 10000)}` }
+            ], { jsonMode: true, temperature: 0.25, max_tokens: 2200 });
 
             finalJsonText = resSingle.text;
         }

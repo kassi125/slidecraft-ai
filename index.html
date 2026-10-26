@@ -1155,17 +1155,29 @@
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
                     
-                    // Préservation intelligente des lignes et espacements de colonnes pour les tableaux PDF
                     let lastY = null;
-                    let pageText = "";
+                    let lastX = null;
+                    let pageText = `\n--- PAGE ${i} ---\n`;
+                    
                     for (const item of textContent.items) {
-                        if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+                        const currentX = item.transform[4];
+                        const currentY = item.transform[5];
+
+                        if (lastY !== null && Math.abs(currentY - lastY) > 5) {
                             pageText += "\n";
-                        } else if (lastY !== null) {
-                            pageText += "   |   ";
+                            lastX = null;
+                        } else if (lastX !== null) {
+                            const xDiff = currentX - lastX;
+                            // Grand espacement horizontal caractéristique des colonnes de tableau
+                            if (xDiff > 35) {
+                                pageText += "   |   ";
+                            } else if (xDiff > 2) {
+                                pageText += " ";
+                            }
                         }
                         pageText += item.str;
-                        lastY = item.transform[5];
+                        lastY = currentY;
+                        lastX = currentX + (item.width || (item.str.length * 6));
                     }
                     fullText += pageText + "\n\n";
                 }
