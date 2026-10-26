@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3000;
 
 // Mot de passe d'accès sécurisé à l'application
 // Configurable librement via la variable d'environnement APP_PASSWORD sur Render
-const APP_PASSWORD = (process.env.APP_PASSWORD || "slidecraft2026").trim();
+const APP_PASSWORD = (process.env.APP_PASSWORD || "18042025").trim();
 
 // Sessions actives en mémoire vive (Zero-Trace : aucune écriture sur disque, expiration automatique)
 const activeSessions = new Map(); // token -> { createdAt: timestamp }
