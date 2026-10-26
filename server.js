@@ -1,9 +1,70 @@
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
 const OpenAI = require('openai');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Mot de passe d'accès sécurisé à l'application
+// Configurable librement via la variable d'environnement APP_PASSWORD sur Render
+const APP_PASSWORD = (process.env.APP_PASSWORD || "slidecraft2026").trim();
+
+// Sessions actives en mémoire vive (Zero-Trace : aucune écriture sur disque, expiration automatique)
+const activeSessions = new Map(); // token -> { createdAt: timestamp }
+const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 heures
+
+// Protection contre les attaques par force brute (Brute-force protection)
+const loginAttempts = new Map(); // ip -> { count, lastAttempt }
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_PERIOD_MS = 5 * 60 * 1000; // 5 minutes de verrouillage temporaire après 5 échecs
+
+// Nettoyage périodique des sessions expirées
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, data] of activeSessions.entries()) {
+        if (now - data.createdAt > SESSION_DURATION_MS) {
+            activeSessions.delete(token);
+        }
+    }
+    for (const [ip, data] of loginAttempts.entries()) {
+        if (now - data.lastAttempt > LOCKOUT_PERIOD_MS) {
+            loginAttempts.delete(ip);
+        }
+    }
+}, 15 * 60 * 1000);
+
+// Vérifier si un jeton de session est valide
+function isValidSession(token) {
+    if (!token || typeof token !== 'string') return false;
+    const session = activeSessions.get(token);
+    if (!session) return false;
+    if (Date.now() - session.createdAt > SESSION_DURATION_MS) {
+        activeSessions.delete(token);
+        return false;
+    }
+    return true;
+}
+
+// Middleware d'authentification obligatoire pour les fonctionnalités sécurisées
+function requireAuth(req, res, next) {
+    const authHeader = req.headers['authorization'] || '';
+    let token = '';
+    if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.slice(7).trim();
+    } else if (req.headers['x-auth-token']) {
+        token = req.headers['x-auth-token'];
+    }
+
+    if (isValidSession(token)) {
+        return next();
+    }
+
+    return res.status(401).json({ 
+        error: "Accès refusé. Veuillez saisir le mot de passe pour déverrouiller l'application.",
+        requireAuth: true
+    });
+}
 
 // Masquer les informations du serveur
 app.disable('x-powered-by');
@@ -158,8 +219,99 @@ async function callGroqWithFallback(groq, modelsToTry, messages, options = {}) {
     throw failureErr;
 }
 
-// Route diagnostic : liste directement les modèles actifs de votre clé Groq
-app.get('/api/models', async (req, res) => {
+// =========================================================================
+// ROUTES D'AUTHENTIFICATION ET DE SÉCURITÉ
+// =========================================================================
+
+// Connexion avec mot de passe
+app.post('/api/auth/login', (req, res) => {
+    const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
+    const now = Date.now();
+
+    // Vérifier les tentatives de force brute
+    const attemptData = loginAttempts.get(clientIp);
+    if (attemptData && attemptData.count >= MAX_FAILED_ATTEMPTS) {
+        const elapsed = now - attemptData.lastAttempt;
+        if (elapsed < LOCKOUT_PERIOD_MS) {
+            const remainingMinutes = Math.ceil((LOCKOUT_PERIOD_MS - elapsed) / 60000);
+            return res.status(429).json({ 
+                error: `Trop de tentatives erronées. Accès temporairement bloqué pendant ${remainingMinutes} minute(s).` 
+            });
+        } else {
+            loginAttempts.delete(clientIp);
+        }
+    }
+
+    const inputPassword = (req.body && req.body.password ? String(req.body.password) : "").trim();
+    if (!inputPassword) {
+        return res.status(400).json({ error: "Veuillez entrer le mot de passe." });
+    }
+
+    // Comparaison temporelle sécurisée (timing-safe) pour parer aux attaques par timing
+    const inputBuffer = Buffer.from(inputPassword);
+    const expectedBuffer = Buffer.from(APP_PASSWORD);
+    let isMatch = false;
+
+    if (inputBuffer.length === expectedBuffer.length) {
+        isMatch = crypto.timingSafeEqual(inputBuffer, expectedBuffer);
+    }
+
+    if (isMatch) {
+        loginAttempts.delete(clientIp);
+        // Générer un jeton cryptographique aléatoire de 64 caractères
+        const sessionToken = crypto.randomBytes(32).toString('hex');
+        activeSessions.set(sessionToken, { createdAt: now });
+
+        console.log(`[Sécurité] Connexion réussie depuis ${clientIp}`);
+        return res.json({ 
+            success: true, 
+            token: sessionToken,
+            message: "Authentification réussie." 
+        });
+    } else {
+        // Enregistrer l'échec
+        const currentCount = attemptData ? attemptData.count + 1 : 1;
+        loginAttempts.set(clientIp, { count: currentCount, lastAttempt: now });
+
+        console.warn(`[Sécurité] Échec de mot de passe depuis ${clientIp} (${currentCount}/${MAX_FAILED_ATTEMPTS})`);
+        return res.status(401).json({ 
+            error: "Mot de passe incorrect. Veuillez réessayer." 
+        });
+    }
+});
+
+// Vérification de la session active
+app.get('/api/auth/check', (req, res) => {
+    const authHeader = req.headers['authorization'] || '';
+    let token = '';
+    if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.slice(7).trim();
+    } else if (req.headers['x-auth-token']) {
+        token = req.headers['x-auth-token'];
+    }
+
+    const valid = isValidSession(token);
+    res.json({ authenticated: valid });
+});
+
+// Déconnexion
+app.post('/api/auth/logout', (req, res) => {
+    const authHeader = req.headers['authorization'] || '';
+    let token = '';
+    if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.slice(7).trim();
+    } else if (req.headers['x-auth-token']) {
+        token = req.headers['x-auth-token'];
+    }
+
+    if (token) {
+        activeSessions.delete(token);
+    }
+    res.json({ success: true, message: "Déconnexion effectuée." });
+});
+
+// Route diagnostic : liste directement les modèles actifs de votre clé Groq (Sécurisée)
+app.get('/api/models', requireAuth, async (req, res) => {
     try {
         const groq = getGroqClient();
         if (!groq) return res.status(500).json({ error: "La variable GROQ_API_KEY n'est pas configurée sur Render." });
@@ -183,8 +335,8 @@ app.get('/api/models', async (req, res) => {
     }
 });
 
-// Route API principale : Génération avec Pipeline Conseil Stratégique (3 IA en Chaîne)
-app.post('/api/generate', async (req, res) => {
+// Route API principale : Génération avec Pipeline Conseil Stratégique (Sécurisée)
+app.post('/api/generate', requireAuth, async (req, res) => {
     try {
         const apiKey = (process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || "").trim();
         if (!apiKey) {
@@ -199,7 +351,7 @@ app.post('/api/generate', async (req, res) => {
         }
         
         // Préparer intelligemment le texte pour respecter les quotas TPM de Groq tout en préservant 100% des tableaux
-        const text = smartPrepareDocumentText(rawText, 12000);
+        const text = smartPrepareDocumentText(rawText, 24000);
 
         const mode = req.body.mode || "master"; // "master" (3 IA en chaîne) ou "express" (1 IA)
         const theme = req.body.theme || "";
