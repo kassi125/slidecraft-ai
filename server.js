@@ -7,63 +7,23 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Mot de passe d'accès sécurisé à l'application
-// Configurable librement via la variable d'environnement APP_PASSWORD sur Render
+// Configurable librement via la variable d'environnement APP_PASSWORD sur Render (défaut : 18042025)
 const APP_PASSWORD = (process.env.APP_PASSWORD || "18042025").trim();
 
-// Sessions actives en mémoire vive (Zero-Trace : aucune écriture sur disque, expiration automatique)
-const activeSessions = new Map(); // token -> { createdAt: timestamp }
-const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 heures
+// Middleware simple et direct de vérification du mot de passe
+function checkPassword(req, res, next) {
+    const clientPass = (
+        req.headers['x-app-password'] || 
+        (req.headers['authorization'] ? req.headers['authorization'].replace(/^Bearer\s+/i, '') : '') || 
+        (req.body && req.body.appPassword) || 
+        (req.query && req.query.password) || 
+        ''
+    ).toString().trim();
 
-// Protection contre les attaques par force brute (Brute-force protection)
-const loginAttempts = new Map(); // ip -> { count, lastAttempt }
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_PERIOD_MS = 5 * 60 * 1000; // 5 minutes de verrouillage temporaire après 5 échecs
-
-// Nettoyage périodique des sessions expirées
-setInterval(() => {
-    const now = Date.now();
-    for (const [token, data] of activeSessions.entries()) {
-        if (now - data.createdAt > SESSION_DURATION_MS) {
-            activeSessions.delete(token);
-        }
-    }
-    for (const [ip, data] of loginAttempts.entries()) {
-        if (now - data.lastAttempt > LOCKOUT_PERIOD_MS) {
-            loginAttempts.delete(ip);
-        }
-    }
-}, 15 * 60 * 1000);
-
-// Vérifier si un jeton de session est valide
-function isValidSession(token) {
-    if (!token || typeof token !== 'string') return false;
-    const session = activeSessions.get(token);
-    if (!session) return false;
-    if (Date.now() - session.createdAt > SESSION_DURATION_MS) {
-        activeSessions.delete(token);
-        return false;
-    }
-    return true;
-}
-
-// Middleware d'authentification obligatoire pour les fonctionnalités sécurisées
-function requireAuth(req, res, next) {
-    const authHeader = req.headers['authorization'] || '';
-    let token = '';
-    if (authHeader.startsWith('Bearer ')) {
-        token = authHeader.slice(7).trim();
-    } else if (req.headers['x-auth-token']) {
-        token = req.headers['x-auth-token'];
-    }
-
-    if (isValidSession(token)) {
+    if (clientPass === APP_PASSWORD) {
         return next();
     }
-
-    return res.status(401).json({ 
-        error: "Accès refusé. Veuillez saisir le mot de passe pour déverrouiller l'application.",
-        requireAuth: true
-    });
+    return res.status(401).json({ error: "Mot de passe incorrect ou non fourni." });
 }
 
 // Masquer les informations du serveur
@@ -220,98 +180,44 @@ async function callGroqWithFallback(groq, modelsToTry, messages, options = {}) {
 }
 
 // =========================================================================
-// ROUTES D'AUTHENTIFICATION ET DE SÉCURITÉ
+// ROUTES D'AUTHENTIFICATION ET DE VÉRIFICATION DU MOT DE PASSE
 // =========================================================================
 
-// Connexion avec mot de passe
-app.post('/api/auth/login', (req, res) => {
-    const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
-    const now = Date.now();
-
-    // Vérifier les tentatives de force brute
-    const attemptData = loginAttempts.get(clientIp);
-    if (attemptData && attemptData.count >= MAX_FAILED_ATTEMPTS) {
-        const elapsed = now - attemptData.lastAttempt;
-        if (elapsed < LOCKOUT_PERIOD_MS) {
-            const remainingMinutes = Math.ceil((LOCKOUT_PERIOD_MS - elapsed) / 60000);
-            return res.status(429).json({ 
-                error: `Trop de tentatives erronées. Accès temporairement bloqué pendant ${remainingMinutes} minute(s).` 
-            });
-        } else {
-            loginAttempts.delete(clientIp);
-        }
+// Vérification directe du mot de passe
+app.post('/api/verify-password', (req, res) => {
+    const clientPass = ((req.body && req.body.password) || req.headers['x-app-password'] || '').toString().trim();
+    if (clientPass === APP_PASSWORD) {
+        return res.json({ success: true, message: "Accès autorisé" });
     }
-
-    const inputPassword = (req.body && req.body.password ? String(req.body.password) : "").trim();
-    if (!inputPassword) {
-        return res.status(400).json({ error: "Veuillez entrer le mot de passe." });
-    }
-
-    // Comparaison temporelle sécurisée (timing-safe) pour parer aux attaques par timing
-    const inputBuffer = Buffer.from(inputPassword);
-    const expectedBuffer = Buffer.from(APP_PASSWORD);
-    let isMatch = false;
-
-    if (inputBuffer.length === expectedBuffer.length) {
-        isMatch = crypto.timingSafeEqual(inputBuffer, expectedBuffer);
-    }
-
-    if (isMatch) {
-        loginAttempts.delete(clientIp);
-        // Générer un jeton cryptographique aléatoire de 64 caractères
-        const sessionToken = crypto.randomBytes(32).toString('hex');
-        activeSessions.set(sessionToken, { createdAt: now });
-
-        console.log(`[Sécurité] Connexion réussie depuis ${clientIp}`);
-        return res.json({ 
-            success: true, 
-            token: sessionToken,
-            message: "Authentification réussie." 
-        });
-    } else {
-        // Enregistrer l'échec
-        const currentCount = attemptData ? attemptData.count + 1 : 1;
-        loginAttempts.set(clientIp, { count: currentCount, lastAttempt: now });
-
-        console.warn(`[Sécurité] Échec de mot de passe depuis ${clientIp} (${currentCount}/${MAX_FAILED_ATTEMPTS})`);
-        return res.status(401).json({ 
-            error: "Mot de passe incorrect. Veuillez réessayer." 
-        });
-    }
+    return res.status(401).json({ success: false, error: "Mot de passe incorrect" });
 });
 
-// Vérification de la session active
-app.get('/api/auth/check', (req, res) => {
-    const authHeader = req.headers['authorization'] || '';
-    let token = '';
-    if (authHeader.startsWith('Bearer ')) {
-        token = authHeader.slice(7).trim();
-    } else if (req.headers['x-auth-token']) {
-        token = req.headers['x-auth-token'];
+// Connexion simple
+app.post('/api/auth/login', (req, res) => {
+    const clientPass = ((req.body && req.body.password) || '').toString().trim();
+    if (clientPass === APP_PASSWORD) {
+        return res.json({ success: true, token: clientPass, message: "Authentification réussie." });
     }
+    return res.status(401).json({ success: false, error: "Mot de passe incorrect. Veuillez réessayer." });
+});
 
-    const valid = isValidSession(token);
-    res.json({ authenticated: valid });
+// Vérification de statut
+app.get('/api/auth/check', (req, res) => {
+    const clientPass = (
+        (req.headers['authorization'] ? req.headers['authorization'].replace(/^Bearer\s+/i, '') : '') || 
+        req.headers['x-app-password'] || 
+        ''
+    ).toString().trim();
+    res.json({ authenticated: clientPass === APP_PASSWORD });
 });
 
 // Déconnexion
 app.post('/api/auth/logout', (req, res) => {
-    const authHeader = req.headers['authorization'] || '';
-    let token = '';
-    if (authHeader.startsWith('Bearer ')) {
-        token = authHeader.slice(7).trim();
-    } else if (req.headers['x-auth-token']) {
-        token = req.headers['x-auth-token'];
-    }
-
-    if (token) {
-        activeSessions.delete(token);
-    }
     res.json({ success: true, message: "Déconnexion effectuée." });
 });
 
 // Route diagnostic : liste directement les modèles actifs de votre clé Groq (Sécurisée)
-app.get('/api/models', requireAuth, async (req, res) => {
+app.get('/api/models', checkPassword, async (req, res) => {
     try {
         const groq = getGroqClient();
         if (!groq) return res.status(500).json({ error: "La variable GROQ_API_KEY n'est pas configurée sur Render." });
@@ -336,7 +242,7 @@ app.get('/api/models', requireAuth, async (req, res) => {
 });
 
 // Route API principale : Génération avec Pipeline Conseil Stratégique (Sécurisée)
-app.post('/api/generate', requireAuth, async (req, res) => {
+app.post('/api/generate', checkPassword, async (req, res) => {
     try {
         const apiKey = (process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || "").trim();
         if (!apiKey) {
